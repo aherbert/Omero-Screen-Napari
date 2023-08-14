@@ -1,0 +1,47 @@
+import functools
+from omero.gateway import BlitzGateway
+import json
+from pathlib import Path
+
+
+def omero_connect(func):
+    """
+    decorator to log in and generate omero connection
+    :param func: function to be decorated
+    :return: wrapper function: passes conn to function and closes it after execution
+    """
+
+    @functools.wraps(func)
+    def wrapper_omero_connect(*args, **kwargs):
+        current_file_path = Path(__file__)
+
+        # Construct the absolute path to the secrets file
+        secrets_path = (
+            current_file_path.parent / "data" / "secrets" / "config.json"
+        )
+        try:
+            with open(secrets_path) as file:
+                data = json.load(file)
+            username = data["username"]
+            password = data["password"]
+            host = data["host"]
+            conn = BlitzGateway(username, password, host=host)
+        except IOError:
+            print("could not get login data")
+        value = None
+        try:
+            print("Connecting to Omero")
+            if conn.connect():
+                value = func(*args, **kwargs, conn=conn)
+                conn.close()
+                print("Disconnecting from Omero")
+            else:
+                print(f"Failed to connect to Omero: {conn.getLastError()}")
+        finally:
+            # No side effects if called without a connection
+
+            conn.close()
+
+        return value
+
+    return wrapper_omero_connect

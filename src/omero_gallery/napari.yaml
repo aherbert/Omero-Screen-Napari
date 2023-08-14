@@ -20,6 +20,9 @@ contributions:
     - id: omero-gallery.make_magic_widget
       python_name: omero_gallery._widget:example_magic_widget
       title: Make example magic widget
+    - id: omero-gallery.make_omero_widget
+      python_name: omero_gallery._call_omero_widget:omero_widget
+      title: Make Omero widget
     - id: omero-gallery.make_func_widget
       python_name: omero_gallery._widget:example_function_widget
       title: Make example function widget
@@ -43,6 +46,8 @@ contributions:
       display_name: Example QWidget
     - command: omero-gallery.make_magic_widget
       display_name: Example Magic Widget
+    - command: omero-gallery.make_omero_widget
+      display_name: Omero Widget
     - command: omero-gallery.make_func_widget
       autogenerate: true
       display_name: Example Function Widget
