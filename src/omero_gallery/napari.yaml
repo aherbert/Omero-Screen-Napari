@@ -2,52 +2,15 @@ name: omero-gallery
 display_name: Omero Gallery
 contributions:
   commands:
-    - id: omero-gallery.get_reader
-      python_name: omero_gallery._reader:napari_get_reader
-      title: Open data with Omero Gallery
-    - id: omero-gallery.write_multiple
-      python_name: omero_gallery._writer:write_multiple
-      title: Save multi-layer data with Omero Gallery
-    - id: omero-gallery.write_single_image
-      python_name: omero_gallery._writer:write_single_image
-      title: Save image data with Omero Gallery
-    - id: omero-gallery.make_sample_data
-      python_name: omero_gallery._sample_data:make_sample_data
-      title: Load sample data from Omero Gallery
-    - id: omero-gallery.make_qwidget
-      python_name: omero_gallery._widget:ExampleQWidget
-      title: Make example QWidget
-    - id: omero-gallery.make_magic_widget
-      python_name: omero_gallery._widget:example_magic_widget
-      title: Make example magic widget
-    - id: omero-gallery.make_omero_widget
-      python_name: omero_gallery._call_omero_widget:omero_widget
-      title: Make Omero widget
-    - id: omero-gallery.make_func_widget
-      python_name: omero_gallery._widget:example_function_widget
-      title: Make example function widget
-  readers:
-    - command: omero-gallery.get_reader
-      accepts_directories: false
-      filename_patterns: ['*.npy']
-  writers:
-    - command: omero-gallery.write_multiple
-      layer_types: ['image*','labels*']
-      filename_extensions: []
-    - command: omero-gallery.write_single_image
-      layer_types: ['image']
-      filename_extensions: ['.npy']
-  sample_data:
-    - command: omero-gallery.make_sample_data
-      display_name: Omero Gallery
-      key: unique_id.1
+    - id: omero-gallery.welldata_widget
+      python_name: omero_gallery._welldata_widget:welldata_widget
+      title: Make Welldata widget
+    - id: omero-gallery.gallery_widget
+      python_name: omero_gallery._gallery_widget:gallery_widget
+      title: Make Gallery widget
   widgets:
-    - command: omero-gallery.make_qwidget
-      display_name: Example QWidget
-    - command: omero-gallery.make_magic_widget
-      display_name: Example Magic Widget
-    - command: omero-gallery.make_omero_widget
-      display_name: Omero Widget
-    - command: omero-gallery.make_func_widget
-      autogenerate: true
-      display_name: Example Function Widget
+    - command: omero-gallery.welldata_widget
+      display_name: Welldata Widget
+    - command: omero-gallery.gallery_widget
+      display_name: Gallery Widget
+
