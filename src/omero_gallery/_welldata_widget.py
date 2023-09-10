@@ -15,6 +15,7 @@ from omero_gallery.viewer_data_module import viewer_data
 from tqdm import tqdm
 import tempfile
 import pandas as pd
+from skimage import exposure
 
 # Global variable to keep track of the existing metadata widget
 metadata_widget: Optional[QWidget] = None
@@ -53,10 +54,10 @@ def welldata_widget(
         layer = viewer.layers[index]
         layer.name = name
         layer.colormap = color_maps[name]
-        # Calculate 1st and 99th percentiles for the contrast limits
-        lower_limit = np.percentile(layer.data, 0.1)
-        upper_limit = np.percentile(layer.data, 99.9)
-        layer.contrast_limits = (lower_limit, upper_limit)
+        # # Calculate 1st and 99th percentiles for the contrast limits
+        # lower_limit = np.percentile(layer.data, 0.1)
+        # upper_limit = np.percentile(layer.data, 99.9)
+        # layer.contrast_limits = (lower_limit, upper_limit)
 
     if viewer_data.labels.shape[3] == 1:
         viewer.add_labels(viewer_data.labels.astype(int), name="Nuclei Masks")
@@ -77,7 +78,7 @@ class MetadataWidget(QWidget):
 
         self.label = QLabel()
         self.label.setText(
-            "\n".join(f"{key}: {value}" for key, value in metadata.items())
+            "\n".join(f"{key}: {value}" for key, value in metadata.items()),
         )
 
         self.layout.addWidget(self.label)
@@ -160,6 +161,8 @@ def _get_omero_objects(conn, plate_id: str, well_pos: str):
     # get plate object
     viewer_data.plate_id = int(plate_id)
     viewer_data.plate = conn.getObject("Plate", viewer_data.plate_id)
+    viewer_data.plate_name = viewer_data.plate.getName()
+    viewer_data.well_name = well_pos
     if viewer_data.plate is None:
         raise ValueError(f"Plate with ID {plate_id} does not exist")
     well_found = False  # Initialize a flag to check if the well is found
@@ -264,10 +267,24 @@ def _get_images(conn):
         image_array = image_array.squeeze()
         corrected_array = image_array / flatfield_array
         cropped_array = corrected_array[30:1050, 30:1050, :]
-        image_arrays.append(cropped_array)
+        # Iterate through each channel to scale it
+        scaled_channels = []
+        for i in range(cropped_array.shape[-1]):
+            scaled_channel = scale_img(cropped_array[..., i])
+            scaled_channels.append(scaled_channel)
+
+        # Stack the scaled channels back into a single array
+        scaled_array = np.stack(scaled_channels, axis=-1)
+        image_arrays.append(scaled_array)
         image_ids.append(image.getId())
     viewer_data.images = np.stack(image_arrays, axis=0)
     viewer_data.image_ids = image_ids
+
+
+def scale_img(img: np.array, percentile: tuple = (0.1, 99.9)) -> np.array:
+    """Increase contrast by scaling image to exclude lowest and highest intensities"""
+    percentiles = np.percentile(img, (percentile[0], percentile[1]))
+    return exposure.rescale_intensity(img, in_range=tuple(percentiles))
 
 
 def _get_flatfieldmask(conn):

@@ -8,9 +8,14 @@ contributions:
     - id: omero-gallery.gallery_widget
       python_name: omero_gallery._gallery_widget:gallery_widget
       title: Make Gallery widget
+    - id: omero-gallery.gui_test
+      python_name: omero_gallery._gui_test:gui_widget
+      title: Make GUI widget
   widgets:
     - command: omero-gallery.welldata_widget
       display_name: Welldata Widget
     - command: omero-gallery.gallery_widget
       display_name: Gallery Widget
+    - command: omero-gallery.gui_test
+      display_name: GUI Widget
 
