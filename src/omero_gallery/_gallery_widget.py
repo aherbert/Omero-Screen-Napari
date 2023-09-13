@@ -275,7 +275,6 @@ def plot_random_gallery(
 
     # Plot the gallery image
     fig, ax = plt.subplots(figsize=(10, 10))
-    print(channels.count(""))
     if channels.count("") == 2:
         index = next((i for i, s in enumerate(channels) if s != ""), None)
         ax.imshow(gallery_image[..., index], cmap="gray")
@@ -286,7 +285,7 @@ def plot_random_gallery(
     )
     plt.axis("off")
     fig.resolution = 300
-    plt.show()
+    plt.show(block=False)
 
 
 def draw_contours(img, label):

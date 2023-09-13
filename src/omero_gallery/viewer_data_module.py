@@ -12,6 +12,7 @@ class ViewerData:
     plate_data: pd.DataFrame = field(default_factory=pd.DataFrame)
     well: _WellWrapper = field(default_factory=_WellWrapper)
     well_name: str = field(default_factory=str)
+    well_id: int = field(default_factory=int)
     screen_dataset: _DatasetWrapper = field(default_factory=_DatasetWrapper)
     channel_data: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
@@ -24,6 +25,7 @@ class ViewerData:
 class CroppedImages:
     cropped_regions: list = field(default_factory=list)
     cropped_labels: list = field(default_factory=list)
+    classifier: list = field(default_factory=list)
 
 
 viewer_data = ViewerData()

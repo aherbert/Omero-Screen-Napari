@@ -17,7 +17,10 @@ def omero_connect(func):
 
         # Construct the absolute path to the secrets file
         secrets_path = (
-            current_file_path.parent / "data" / "secrets" / "config.json"
+            current_file_path.parent
+            / "data"
+            / "secrets"
+            / "config.json"
         )
         try:
             with open(secrets_path) as file:
@@ -45,3 +48,21 @@ def omero_connect(func):
         return value
 
     return wrapper_omero_connect
+
+
+def attach_file_to_well(well, file_path, conn):
+    """
+    Attach the .npz file to the specified OMERO well.
+    """
+    namespace = f"Training Data for Well {well.getId()}"
+    description = None  # Optionally, add a description
+    print(f"\nUploading data to Well ID {well.getId()}")
+
+    # Create the file annotation and link it to the well
+    file_ann = conn.createFileAnnfromLocalFile(
+        file_path,
+        mimetype="application/octet-stream",
+        ns=namespace,
+        desc=description,
+    )
+    well.linkAnnotation(file_ann)

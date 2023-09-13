@@ -161,15 +161,17 @@ def _get_omero_objects(conn, plate_id: str, well_pos: str):
     # get plate object
     viewer_data.plate_id = int(plate_id)
     viewer_data.plate = conn.getObject("Plate", viewer_data.plate_id)
-    viewer_data.plate_name = viewer_data.plate.getName()
-    viewer_data.well_name = well_pos
     if viewer_data.plate is None:
         raise ValueError(f"Plate with ID {plate_id} does not exist")
+    viewer_data.plate_name = viewer_data.plate.getName()
+    viewer_data.well_name = well_pos
+
     well_found = False  # Initialize a flag to check if the well is found
     # get well object
     for well in viewer_data.plate.listChildren():
         if well.getWellPos() == well_pos:
             viewer_data.well = well
+            viewer_data.well_id = well.getId()
             well_found = True  # Set the flag to True when the well is found
             break  # Exit the loop as the well is found
     if not well_found:  # Raise an error if the well was not found
