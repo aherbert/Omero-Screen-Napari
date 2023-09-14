@@ -1,4 +1,4 @@
-# omero-gallery
+# omero-screen-napari
 
 [![License MIT](https://img.shields.io/pypi/l/omero-gallery.svg?color=green)](https://github.com/HocheggerLab/omero-gallery/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/omero-gallery.svg?color=green)](https://pypi.org/project/omero-gallery)
@@ -7,19 +7,26 @@
 [![codecov](https://codecov.io/gh/HocheggerLab/omero-gallery/branch/main/graph/badge.svg)](https://codecov.io/gh/HocheggerLab/omero-gallery)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/omero-gallery)](https://napari-hub.org/plugins/omero-gallery)
 
-Plugin to build galleries from Omero-Screen data
+
+
 
 ----------------------------------
 
 This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
 
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/cookiecutter-napari-plugin#getting-started
+## Overview
+Plugin to interact with HCS screening data from Omero-Screen data.
+Omero-Screen handles metadata, flatfield correction, image segmentation
+and cell cycle analysis of EdU labeled IF data.
+The resulting data are stored in an Omero database and are required for this plugin to function.
 
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
+Currently the plugin supports three widgets:
+1) A welldata widget to display flatfield corrected well data.
+2) Gallery widget to display images from a well in a gallery, choosing segmentation mask, chanels and cell cycle phase
+3) A trainingData widget to generate labeled training data for classification.
+
+In development is a widget that initiates training of a CNN for classifiaction and model evaluation.
+Unit tests are in development.
 
 ## Installation
 
@@ -35,6 +42,8 @@ To install latest development version :
 
 
 ## Contributing
+Robert Zach, Haoran Yue, Alex Herbert and Helfrid Hochegger
+@HocheggerLab University of Sussex
 
 Contributions are very welcome. Tests can be run with [tox], please ensure
 the coverage at least stays the same before you submit a pull request.
