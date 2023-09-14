@@ -2,7 +2,7 @@
 This module handles the widget to call Omero and load well images
 """
 import napari
-from omero_gallery.omero_utils import omero_connect
+from omero_screen_napari.omero_utils import omero_connect
 from magicgui import magic_factory
 from omero.gateway import BlitzGateway
 import numpy as np
@@ -11,7 +11,7 @@ import omero
 from omero.gateway import FileAnnotationWrapper
 from qtpy.QtWidgets import QMessageBox, QLabel, QVBoxLayout, QWidget
 from typing import Optional
-from omero_gallery.viewer_data_module import viewer_data
+from omero_screen_napari.viewer_data_module import viewer_data
 from tqdm import tqdm
 import tempfile
 import pandas as pd

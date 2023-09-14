@@ -6,7 +6,7 @@ from magicgui import magic_factory
 from qtpy.QtWidgets import QMessageBox
 from skimage.measure import regionprops, label, find_contours
 
-from omero_gallery.viewer_data_module import viewer_data, cropped_images
+from omero_screen_napari.viewer_data_module import viewer_data, cropped_images
 
 
 @magic_factory(

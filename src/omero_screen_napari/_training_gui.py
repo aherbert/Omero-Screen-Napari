@@ -12,15 +12,18 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
 
-from omero_gallery.viewer_data_module import viewer_data, cropped_images
-from omero_gallery._gallery_widget import (
+from omero_screen_napari.viewer_data_module import viewer_data, cropped_images
+from omero_screen_napari._gallery_widget import (
     select_channels,
     generate_crops,
     draw_contours,
     fill_missing_channels,
 )
-from omero_gallery.omero_utils import omero_connect
-from omero_gallery._handle_traningdata import get_saved_data, save_trainingdata
+from omero_screen_napari.omero_utils import omero_connect
+from omero_screen_napari._handle_traningdata import (
+    get_saved_data,
+    save_trainingdata,
+)
 import numpy as np
 from functools import partial
 from magicgui import magic_factory

@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import QMessageBox
 from qtpy import QtWidgets, QtCore
-from omero_gallery import _call_omero_widget
-from omero_gallery._call_omero_widget import (
+from omero_screen_napari import _call_omero_widget
+from omero_screen_napari._call_omero_widget import (
     get_well_img,
     _get_flatfieldmask,
     _get_images_from_well,

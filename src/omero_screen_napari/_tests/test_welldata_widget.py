@@ -1,5 +1,8 @@
 from unittest.mock import Mock
-from omero_gallery._welldata_widget import _get_plate_data, _get_channel_data
+from omero_screen_napari._welldata_widget import (
+    _get_plate_data,
+    _get_channel_data,
+)
 
 
 def test_get_channel_data(omero_conn):
