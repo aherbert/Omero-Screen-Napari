@@ -176,7 +176,10 @@ def _get_omero_objects(conn, plate_id: str, well_pos: str):
             break  # Exit the loop as the well is found
     if not well_found:  # Raise an error if the well was not found
         raise ValueError(f"Well with position {well_pos} does not exist.")
-    project = conn.getObject("Project", attributes={"name": "Screens"})
+    owner = conn.getUser().getId()
+    project = conn.getObject("Project",
+                             opts={'owner': owner},
+                             attributes={"name": "Screens"})
     if dataset := conn.getObject(
         "Dataset",
         attributes={"name": plate_id},
