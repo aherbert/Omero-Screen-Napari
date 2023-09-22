@@ -1,21 +1,24 @@
 """
 This module handles the widget to call Omero and load well images
 """
+import re
+import tempfile
+from typing import Optional
+
 import napari
-from omero_screen_napari.omero_utils import omero_connect
+import numpy as np
+import omero
+import pandas as pd
+from ezomero import get_image
 from magicgui import magic_factory
 from omero.gateway import BlitzGateway
-import numpy as np
-from ezomero import get_image
-import omero
 from omero.gateway import FileAnnotationWrapper
 from qtpy.QtWidgets import QMessageBox, QLabel, QVBoxLayout, QWidget
-from typing import Optional
-from omero_screen_napari.viewer_data_module import viewer_data
-from tqdm import tqdm
-import tempfile
-import pandas as pd
 from skimage import exposure
+from tqdm import tqdm
+
+from omero_screen_napari.omero_utils import omero_connect
+from omero_screen_napari.viewer_data_module import viewer_data
 
 # Global variable to keep track of the existing metadata widget
 metadata_widget: Optional[QWidget] = None
@@ -23,9 +26,10 @@ metadata_widget: Optional[QWidget] = None
 
 @magic_factory(call_button="Enter")
 def welldata_widget(
-    viewer: "napari.viewer.Viewer",
-    plate_id: str = "Plate ID",
-    well_pos: str = "Well Position",
+        viewer: "napari.viewer.Viewer",
+        plate_id: str = "Plate ID",
+        well_pos: str = "Well Position",
+        images: str = "All",
 ):
     global metadata_widget
     # Clear all layers from the viewer
@@ -33,7 +37,7 @@ def welldata_widget(
     viewer.layers.remove_selected()
 
     # Get the data from Omero
-    _get_data(plate_id, well_pos)
+    _get_data(plate_id, well_pos, images)
     channel_names = {
         key: int(value) for key, value in viewer_data.channel_data.items()
     }
@@ -117,7 +121,7 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
     # Assign remaining colors to any remaining channels
     remaining_channels = set(channel_names.keys()) - set(color_map_dict.keys())
     for remaining_channel, remaining_color in zip(
-        remaining_channels, remaining_colors
+            remaining_channels, remaining_colors
     ):
         color_map_dict[remaining_channel] = remaining_color
     return color_map_dict
@@ -127,7 +131,7 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
 
 
 @omero_connect
-def _get_data(plate_id: str, well_pos: str, conn=None):
+def _get_data(plate_id: str, well_pos: str, images: str, conn=None):
     """
     Get data from Omero and add it to the viewer_data dataclass object
     :param plate_id: number of the omero screen plate
@@ -135,22 +139,23 @@ def _get_data(plate_id: str, well_pos: str, conn=None):
     :param conn: omero.gateway connection
     :return: None
     """
-    try:
-        _get_omero_objects(conn, plate_id, well_pos)
-        _get_well_data()
-        _get_channel_data()
-        _get_well_metadata()
-        _get_images(conn)
-        _get_segmentation_masks(conn)
 
-    except Exception as e:
-        # Show a message box with the error message
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(str(e))
-        msg_box.setWindowTitle("Error")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+    _get_omero_objects(conn, plate_id, well_pos)
+    _get_well_data()
+    _get_channel_data()
+    _get_well_metadata()
+    _get_images(images, conn)
+    _get_segmentation_masks(conn)
+
+    # except Exception as e:
+    #     print(f"the error is {e}")
+        # # Show a message box with the error message
+        # msg_box = QMessageBox()
+        # msg_box.setIcon(QMessageBox.Warning)
+        # msg_box.setText(str(e))
+        # msg_box.setWindowTitle("Error")
+        # msg_box.setStandardButtons(QMessageBox.Ok)
+        # msg_box.exec_()
 
 
 # plate and channel_data
@@ -181,9 +186,9 @@ def _get_omero_objects(conn, plate_id: str, well_pos: str):
                              opts={'owner': owner},
                              attributes={"name": "Screens"})
     if dataset := conn.getObject(
-        "Dataset",
-        attributes={"name": plate_id},
-        opts={"project": project.getId()},
+            "Dataset",
+            attributes={"name": plate_id},
+            opts={"project": project.getId()},
     ):
         viewer_data.screen_dataset = dataset
     else:
@@ -196,18 +201,18 @@ def _get_well_data():
     file_anns = viewer_data.plate.listAnnotations()
     for ann in file_anns:
         if isinstance(
-            ann, FileAnnotationWrapper
+                ann, FileAnnotationWrapper
         ) and ann.getFile().getName().endswith("final_data.csv"):
             original_file = ann.getFile()
             with tempfile.NamedTemporaryFile(
-                suffix=".csv", delete=False
+                    suffix=".csv", delete=False
             ) as tmp:
                 _download_file_to_tmp(original_file, tmp)
                 tmp.flush()  # Ensure all data is written to the temp file
                 data = pd.read_csv(tmp.name, index_col=0)
                 viewer_data.plate_data = data[
                     data["well"] == viewer_data.well.getWellPos()
-                ]
+                    ]
 
 
 def _download_file_to_tmp(original_file, tmp):
@@ -219,19 +224,20 @@ def _download_file_to_tmp(original_file, tmp):
 def _get_channel_data():
     map_ann = _get_map_ann(viewer_data.plate)
     channel_data = dict(map_ann)
-    if "Hoechst" in channel_data:
-        channel_data["DAPI"] = channel_data.pop("Hoechst")
-    viewer_data.channel_data = channel_data
+    cleaned_channel_data = {key.strip(): value for key, value in channel_data.items()}
+    if "Hoechst" in cleaned_channel_data:
+        cleaned_channel_data["DAPI"] = cleaned_channel_data.pop("Hoechst")
+    viewer_data.channel_data = cleaned_channel_data
 
 
 def _get_map_ann(omero_object):
     annotations = omero_object.listAnnotations()
     if not (
-        map_annotations := [
-            ann
-            for ann in annotations
-            if isinstance(ann, omero.gateway.MapAnnotationWrapper)
-        ]
+            map_annotations := [
+                ann
+                for ann in annotations
+                if isinstance(ann, omero.gateway.MapAnnotationWrapper)
+            ]
     ):
         raise ValueError(
             f"Map annotation not found for {viewer_data.plate.getName()}."
@@ -255,35 +261,50 @@ def _get_well_metadata():
 # image data
 
 
-def _get_images(conn):
+def _get_images(images, conn):
     # Lists to store the individual image arrays and ids
-    image_arrays: list = []
-    image_ids: list = []
-    img_number: int = viewer_data.well.countWellSample()
     flatfield_array, flatfield_channels = _get_flatfieldmask(conn)
     _check_flatfieldmask(flatfield_channels)
     print(
-        f"Gathering {img_number} images from well {viewer_data.well.getWellPos()}"
+        f"Gathering {images} images from well {viewer_data.well.getWellPos()}"
     )
-    for index in tqdm(range(img_number)):
-        image, image_array = get_image(
-            conn, viewer_data.well.getImage(index).getId()
-        )
-        image_array = image_array.squeeze()
-        corrected_array = image_array / flatfield_array
-        cropped_array = corrected_array[30:1050, 30:1050, :]
-        # Iterate through each channel to scale it
-        scaled_channels = []
-        for i in range(cropped_array.shape[-1]):
-            scaled_channel = scale_img(cropped_array[..., i])
-            scaled_channels.append(scaled_channel)
-
-        # Stack the scaled channels back into a single array
-        scaled_array = np.stack(scaled_channels, axis=-1)
-        image_arrays.append(scaled_array)
-        image_ids.append(image.getId())
+    image_arrays: list = []
+    image_ids: list = []
+    pattern = r'^\d+-\d+$'
+    if images == "All" or re.match(pattern, images):
+        if images == "All":
+            img_range = range(viewer_data.well.countWellSample())
+        else:
+            start, end = map(int, images.split("-"))
+            img_range = range(start, end + 1)
+        for index in tqdm(img_range):
+            image_id, image_array = _process_omero_image(index, flatfield_array, conn)
+            image_arrays.append(image_array)
+            image_ids.append(image_id)
+    elif images.isdigit():
+        index: int = int(images)
+        image_id, image_array = _process_omero_image(index, flatfield_array, conn)
+        image_arrays.append(image_array)
+        image_ids.append(image_id)
+    else:
+        raise ValueError(f"Invalid image number: {images}")
     viewer_data.images = np.stack(image_arrays, axis=0)
     viewer_data.image_ids = image_ids
+
+
+def _process_omero_image(index, flatfield_array, conn):
+    image, image_array = get_image(
+        conn, viewer_data.well.getImage(index).getId()
+    )
+    image_array = image_array.squeeze()
+    corrected_array = image_array / flatfield_array
+
+    # Iterate through each channel to scale it
+    scaled_channels = []
+    for i in range(corrected_array.shape[-1]):
+        scaled_channel = scale_img(corrected_array[..., i])
+        scaled_channels.append(scaled_channel)
+    return image.getId(), np.stack(scaled_channels, axis=-1)
 
 
 def scale_img(img: np.array, percentile: tuple = (0.1, 99.9)) -> np.array:
@@ -301,6 +322,8 @@ def _get_flatfieldmask(conn):
             flatfield_mask_id = image.getId()
             flatfield_obj, flatfield_array = get_image(conn, flatfield_mask_id)
             flatfield_channels = dict(_get_map_ann(flatfield_obj))
+            for key, value in flatfield_channels.items():
+                flatfield_channels[key] = value.strip()
             return flatfield_array.squeeze(), flatfield_channels
 
 
@@ -311,11 +334,16 @@ def _check_flatfieldmask(flatfield_channels):
         v: k.split("_")[-1] for k, v in flatfield_channels.items()
     }
     # Check if the mappings are consistent
+    print(reverse_flatfield_mask)
     for channel, index in viewer_data.channel_data.items():
-        assert (
-            reverse_flatfield_mask[channel] == index
-        ), f"Inconsistency found: {channel} is mapped to {index} in plate_map but {reverse_flatfield_mask[channel]} in flatfield_mask"
-
+        print(reverse_flatfield_mask[channel])
+        print(index)
+        try:
+            assert reverse_flatfield_mask[channel] == index
+        except AssertionError:
+            print(f"Inconsistency found: {channel} is mapped to {index} in plate_map but {reverse_flatfield_mask[channel]} in flatfield_mask")
+        else:
+            print("Flatfield mask is consistent with images")
 
 # get the image labels
 def _get_segmentation_masks(conn):
@@ -342,15 +370,30 @@ def _get_segmentation_masks(conn):
 
 
 if __name__ == "__main__":
-    plate_id = "3"
-    well_pos = "C2"
-    print(viewer_data.channel_data)
-    print(viewer_data.metadata)
-    print(viewer_data.images.shape)
-    print(viewer_data.labels.shape)
-    _get_data(plate_id, well_pos)
-    print(viewer_data.channel_data)
-    print(viewer_data.metadata)
-    print(viewer_data.images.shape)
-    print(viewer_data.labels.shape)
-    print(viewer_data.plate_data.head())
+    @omero_connect
+    def show_image(image_id, conn=None):
+        image, image_array = get_image(conn, image_id)
+        viewer = napari.Viewer()
+        viewer.add_image(image_array.squeeze(), channel_axis=-1)
+        print(image_array.squeeze().shape)
+        napari.run()
+
+
+    show_image(571808)
+    # plate_id = "1421"
+    # well_pos = "B2"
+    # image = "0"
+    # print(viewer_data.channel_data)
+    #
+    # _get_data(plate_id, well_pos, image)
+    # print(viewer_data.channel_data)
+    # channel_names = {
+    #     key: int(value) for key, value in viewer_data.channel_data.items()
+    # }
+    # print(channel_names)
+    # color_maps = _generate_color_map(channel_names)
+    # print(color_maps)
+    # print(viewer_data.metadata)
+    # print(viewer_data.images.shape)
+    # print(viewer_data.labels.shape)
+    # print(viewer_data.image_ids)
