@@ -139,23 +139,23 @@ def _get_data(plate_id: str, well_pos: str, images: str, conn=None):
     :param conn: omero.gateway connection
     :return: None
     """
+    try:
+        _get_omero_objects(conn, plate_id, well_pos)
+        _get_well_data()
+        _get_channel_data()
+        _get_well_metadata()
+        _get_images(images, conn)
+        _get_segmentation_masks(conn)
 
-    _get_omero_objects(conn, plate_id, well_pos)
-    _get_well_data()
-    _get_channel_data()
-    _get_well_metadata()
-    _get_images(images, conn)
-    _get_segmentation_masks(conn)
-
-    # except Exception as e:
-    #     print(f"the error is {e}")
-        # # Show a message box with the error message
-        # msg_box = QMessageBox()
-        # msg_box.setIcon(QMessageBox.Warning)
-        # msg_box.setText(str(e))
-        # msg_box.setWindowTitle("Error")
-        # msg_box.setStandardButtons(QMessageBox.Ok)
-        # msg_box.exec_()
+    except Exception as e:
+        print(f"the error is {e}")
+        # Show a message box with the error message
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(str(e))
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
 
 
 # plate and channel_data
@@ -220,11 +220,13 @@ def _download_file_to_tmp(original_file, tmp):
 
 def _get_channel_data():
     map_ann = _get_map_ann(viewer_data.plate)
+    print(f"map_ann: {map_ann}")
     channel_data = dict(map_ann)
     cleaned_channel_data = {key.strip(): value for key, value in channel_data.items()}
     if "Hoechst" in cleaned_channel_data:
         cleaned_channel_data["DAPI"] = cleaned_channel_data.pop("Hoechst")
     viewer_data.channel_data = cleaned_channel_data
+
 
 
 def _get_map_ann(omero_object):
@@ -239,6 +241,8 @@ def _get_map_ann(omero_object):
         raise ValueError(
             f"Map annotation not found for {viewer_data.plate.getName()}."
         )
+    print(f"Found map annotation for {viewer_data.plate.getName()}")
+    print(map_annotations[0].getValue())
     return map_annotations[0].getValue()
 
 
@@ -331,10 +335,7 @@ def _check_flatfieldmask(flatfield_channels):
         v: k.split("_")[-1] for k, v in flatfield_channels.items()
     }
     # Check if the mappings are consistent
-    print(reverse_flatfield_mask)
     for channel, index in viewer_data.channel_data.items():
-        print(reverse_flatfield_mask[channel])
-        print(index)
         try:
             assert reverse_flatfield_mask[channel] == index
         except AssertionError:
