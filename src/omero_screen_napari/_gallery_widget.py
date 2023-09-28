@@ -277,7 +277,7 @@ def plot_random_gallery(
     fig, ax = plt.subplots(figsize=(10, 10))
     if channels.count("") == 2:
         index = next((i for i, s in enumerate(channels) if s != ""), None)
-        ax.imshow(gallery_image[..., index], cmap="gray")
+        ax.imshow(gallery_image[..., index], cmap="gray_r")
     else:
         ax.imshow(gallery_image)
     ax.set_title(
