@@ -39,26 +39,27 @@ def show_gallery(
 ):
     filtered_channels = list(filter(None, channels))
 
-    try:
-        images = select_channels(filtered_channels)
-        generate_crops(images, segmentation, cellcycle, crop_size)
-        plot_random_gallery(
-            channels,
-            crop_size,
-            cellcycle,
-            contour=contour,
-            n_row=rows,
-            n_col=columns,
-            padding=5,
-        )
-    except Exception as e:
-        # Show a message box with the error message
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(str(e))
-        msg_box.setWindowTitle("Error")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+
+    images = select_channels(filtered_channels)
+    generate_crops(images, segmentation, cellcycle, crop_size)
+    plot_random_gallery(
+        channels,
+        crop_size,
+        cellcycle,
+        contour=contour,
+        n_row=rows,
+        n_col=columns,
+        padding=5,
+    )
+    # except Exception as e:
+    #
+        # # Show a message box with the error message
+        # msg_box = QMessageBox()
+        # msg_box.setIcon(QMessageBox.Warning)
+        # msg_box.setText(str(e))
+        # msg_box.setWindowTitle("Error")
+        # msg_box.setStandardButtons(QMessageBox.Ok)
+        # msg_box.exec_()
 
 
 def select_channels(channels: list[str]) -> np.ndarray:
@@ -78,9 +79,10 @@ def generate_crops(image_data, segmentation, cellcycle, crop_size):
     """
     Crop regions around each segmented object in the image.
     """
+    if cropped_images.cropped_regions or cropped_images.cropped_labels:
+        return
     cropped_regions = []
     cropped_labels = []
-
     # Iterate through individual images
     for i in range(image_data.shape[0]):
         # Extract data and labels for the current image
@@ -241,6 +243,13 @@ def plot_random_gallery(
         for chosen_cell in chosen_cells
     ]
     chosen_labels = [cropped_images.cropped_labels[i] for i in chosen_indices]
+    # delete cells, labels that are displayed from cropped images so that they wont appear again
+    cropped_images.cropped_regions = [item for index, item in enumerate(cropped_images.cropped_regions) if
+                                      index not in chosen_indices]
+    print(f"cropped image number: {len(cropped_images.cropped_regions)}")
+    cropped_images.cropped_labels = [item for index, item in enumerate(cropped_images.cropped_labels) if
+                                      index not in chosen_indices]
+    print(f"cropped label number: {len(cropped_images.cropped_labels)}")
     channel_num = chosen_cells[0].shape[-1]
     if contour == True:
         chosen_cells = [
