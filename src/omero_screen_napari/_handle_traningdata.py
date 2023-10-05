@@ -18,6 +18,10 @@ def get_saved_data(well_id, classification_name, conn=None):
                 print(f"Found file {file_name}. Loading it...")
                 data_array = read_data(ann)
                 store_data(data_array)
+            elif "npy" in file_name:
+                print(f"File {file_name} does not match {classification_name}")
+            else:
+                print("No previous training data found")
 
 
 def read_data(ann):
@@ -29,14 +33,11 @@ def read_data(ann):
 
 
 def store_data(data_array):
-    cropped_images.cropped_regions = data_array[0].tolist()
-    cropped_images.cropped_labels = data_array[1].tolist()
-    cropped_images.classifier = data_array[2].tolist()
+    cropped_images.classifier = data_array.tolist()
 
 
 @omero_connect
 def save_trainingdata(well_id, classification_name, conn=None):
-    combined_array = transform_data()
     well = conn.getObject("Well", well_id)
     delete_old_data(well, classification_name, conn)
     try:
@@ -44,7 +45,7 @@ def save_trainingdata(well_id, classification_name, conn=None):
             suffix=".npy", delete=False
         ) as temp_file:
             temp_path = temp_file.name
-            np.save(temp_path, combined_array)
+            np.save(temp_path, cropped_images.classifier)
             temp_file.close()
 
         file_ann = conn.createFileAnnfromLocalFile(
@@ -61,16 +62,16 @@ def save_trainingdata(well_id, classification_name, conn=None):
         print(f"An error occurred: {e}")
 
 
-def transform_data():
-    # Create an empty object array to hold all the data
-    combined_array = np.empty(
-        (3, len(cropped_images.cropped_regions)), dtype=object
-    )
-
-    combined_array[0, :] = cropped_images.cropped_regions
-    combined_array[1, :] = cropped_images.cropped_labels
-    combined_array[2, :] = cropped_images.classifier
-    return combined_array
+# def transform_data():
+#     # Create an empty object array to hold all the data
+#     combined_array = np.empty(
+#         (3, len(cropped_images.cropped_regions)), dtype=object
+#     )
+#
+#     combined_array[0, :] = cropped_images.cropped_regions
+#     combined_array[1, :] = cropped_images.cropped_labels
+#     combined_array[2, :] = cropped_images.classifier
+#     return combined_array
 
 
 def delete_old_data(well, classification_name, conn):
@@ -96,11 +97,11 @@ if __name__ == "__main__":
     cropped_images.cropped_labels = [
         sample_data[i, :, :, :] for i in range(sample_data.shape[0])
     ]
-    cropped_images.classifier = ["unassigned"] * len(
-        cropped_images.cropped_regions
-    )
+    # cropped_images.classifier = ["unassigned"] * len(
+    #     cropped_images.cropped_regions
+    # )
 
-    combined_array = transform_data()
+    #save_trainingdata(51, 'training_data')
 
-    get_saved_data(51, "combined_array")
-    print(cropped_images.cropped_regions[0].shape)
+    get_saved_data(51, "training_array")
+    print(cropped_images.classifier)

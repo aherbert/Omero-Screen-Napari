@@ -34,9 +34,9 @@ from magicgui.widgets import Container
 def gui_widget():
     # Call the magic factories to get the widget instances
     training_widget_instance = training_widget()
-    function2_instance = function2()
+    saving_widget_instance = saving_widget()
 
-    return Container(widgets=[training_widget_instance, function2_instance])
+    return Container(widgets=[training_widget_instance, saving_widget_instance])
 
 
 @magic_factory(
@@ -76,7 +76,7 @@ def training_widget(
 
 
 @magic_factory(call_button="Save")
-def function2(exp_name: str):
+def saving_widget(exp_name: str):
     well_id = viewer_data.well_id
     save_trainingdata(well_id, exp_name)
 
