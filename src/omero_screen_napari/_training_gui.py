@@ -56,17 +56,16 @@ def training_widget(
     green_channel: str = "Tub",
     red_channel: str = "EdU",
 ):
+
+    channels = [blue_channel, green_channel, red_channel]
+    get_cropped_images(
+        channels, segmentation, crop_size, contour, cellcycle
+    )
+    cropped_images.classifier = ["unassigned"] * len(
+        cropped_images.cropped_regions
+    )
     if exp_name:
-        well_id = viewer_data.well_id
-        get_saved_data(well_id, exp_name)
-    else:
-        channels = [blue_channel, green_channel, red_channel]
-        get_cropped_images(
-            channels, segmentation, crop_size, contour, cellcycle
-        )
-        cropped_images.classifier = ["unassigned"] * len(
-            cropped_images.cropped_regions
-        )
+        get_saved_data(viewer_data.well_id, exp_name)
     app = QApplication.instance()
     if app is None:
         app = QApplication(
