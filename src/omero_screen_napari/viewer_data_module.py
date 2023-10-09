@@ -26,7 +26,7 @@ class ViewerData:
 class CroppedImages:
     cropped_regions: list = field(default_factory=list)
     cropped_labels: list = field(default_factory=list)
-    classifier: list = field(default_factory=list)
+    classifier: dict = field(default_factory=dict)
 
 
 viewer_data = ViewerData()

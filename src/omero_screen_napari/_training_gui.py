@@ -29,14 +29,19 @@ from functools import partial
 from magicgui import magic_factory
 from magicgui.widgets import Container
 
+channel_list = list(viewer_data.channel_data.keys())
 
 # iniatiate combined widget with two magic factories in a container
 def gui_widget():
     # Call the magic factories to get the widget instances
+    global training_widget_instance
     training_widget_instance = training_widget()
+
     saving_widget_instance = saving_widget()
+    print(training_widget_instance.exp_name.value)
 
     return Container(widgets=[training_widget_instance, saving_widget_instance])
+
 
 
 @magic_factory(
@@ -47,25 +52,41 @@ def gui_widget():
 )
 def training_widget(
     # viewer: "napari.viewer.Viewer",
-    exp_name: str,
+
     segmentation: str,
     crop_size: int,
     cellcycle: str,
+    exp_name: str = None,
     contour: bool = True,
-    blue_channel: str = "DAPI",
-    green_channel: str = "Tub",
-    red_channel: str = "EdU",
+    blue_channel: str = channel_list[0] if len(channel_list) > 0 else None,
+    green_channel: str = channel_list[1] if len(channel_list) > 1 else None,
+    red_channel: str = channel_list[2] if len(channel_list) > 2 else None,
 ):
-
+    # if exp_name != "None":
+    #     training_widget_instance.blue_channel.value = 'EdU'
+    # add the classifier metadata to the cropped_images dataclass
+    classifier = {
+        "segmentation": segmentation,
+        "crop_size": crop_size,
+        "cellcycle": cellcycle,
+        "exp_name": exp_name,
+        "contour": contour,
+        "blue_channel": blue_channel,
+        "green_channel": green_channel,
+        "red_channel": red_channel,
+        "labels": []
+    }
+    cropped_images.classifier = classifier
     channels = [blue_channel, green_channel, red_channel]
     get_cropped_images(
         channels, segmentation, crop_size, contour, cellcycle
     )
-    cropped_images.classifier = ["unassigned"] * len(
+    cropped_images.classifier["labels"] = ["unassigned"] * len(
         cropped_images.cropped_regions
     )
-    if exp_name:
+    if exp_name != "None":
         get_saved_data(viewer_data.well_id, exp_name)
+
     app = QApplication.instance()
     if app is None:
         app = QApplication(
@@ -200,7 +221,7 @@ class TrainingDataWidget(QWidget):
             cropped_image = cropped_images.cropped_regions[
                 self.current_image_index
             ]
-            classifier_label = cropped_images.classifier[
+            classifier_label = cropped_images.classifier['labels'][
                 self.current_image_index
             ]  # New line
             qimage = array_to_qimage(cropped_image)
@@ -237,7 +258,7 @@ class TrainingDataWidget(QWidget):
 
     def on_class_enter_button_clicked(self, class_index):
         class_name = self.class_name_edits[class_index].text()
-        cropped_images.classifier[
+        cropped_images.classifier['labels'][
             self.current_image_index
         ] = class_name  # Update the classifier label
         self.update_image_and_info()  # Refresh the displayed information
@@ -298,7 +319,7 @@ if __name__ == "__main__":
         sample_data[i, :, :, :] for i in range(sample_data.shape[0])
     ]
 
-    cropped_images.classifier = ["unassigned"] * len(
+    cropped_images.classifier['labels'] = ["unassigned"] * len(
         cropped_images.cropped_regions
     )
 

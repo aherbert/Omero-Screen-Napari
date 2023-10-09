@@ -4,6 +4,7 @@ import numpy as np
 import tempfile
 import omero
 from io import BytesIO
+import pickle
 
 
 @omero_connect
@@ -14,10 +15,12 @@ def get_saved_data(well_id, classification_name, conn=None):
             original_file = ann.getFile()
             file_name = original_file.getName()
 
-            if file_name == f"{classification_name}.npy":
+            if file_name == f"{classification_name}.pkl":
                 print(f"Found file {file_name}. Loading it...")
-                data_array = read_data(ann)
-                store_data(data_array)
+                data_bytes = read_data(ann)
+                data_dict = pickle.loads(data_bytes)
+                cropped_images.classifier = data_dict
+
             elif "npy" in file_name:
                 print(f"File {file_name} does not match {classification_name}")
             else:
@@ -27,9 +30,8 @@ def get_saved_data(well_id, classification_name, conn=None):
 def read_data(ann):
     file_data = ann.getFileInChunks()
     file_bytes = b"".join(file_data)
-    array_data = np.load(BytesIO(file_bytes), allow_pickle=True)
     print("Previous training data loaded")
-    return array_data
+    return file_bytes
 
 
 def store_data(data_array):
@@ -42,16 +44,16 @@ def save_trainingdata(well_id, classification_name, conn=None):
     delete_old_data(well, classification_name, conn)
     try:
         with tempfile.NamedTemporaryFile(
-            suffix=".npy", delete=False
+            suffix=".pkl", delete=False
         ) as temp_file:
+            pickle.dump(cropped_images.classifier, temp_file)
             temp_path = temp_file.name
-            np.save(temp_path, cropped_images.classifier)
             temp_file.close()
 
         file_ann = conn.createFileAnnfromLocalFile(
             localPath=temp_path,
-            origFilePathAndName=f"{classification_name}.npy",
-            mimetype="application/npy",
+            origFilePathAndName=f"{classification_name}.pkl",
+            mimetype="application/pkl",
             ns=None,
             desc=None,
         )
@@ -62,17 +64,6 @@ def save_trainingdata(well_id, classification_name, conn=None):
         print(f"An error occurred: {e}")
 
 
-# def transform_data():
-#     # Create an empty object array to hold all the data
-#     combined_array = np.empty(
-#         (3, len(cropped_images.cropped_regions)), dtype=object
-#     )
-#
-#     combined_array[0, :] = cropped_images.cropped_regions
-#     combined_array[1, :] = cropped_images.cropped_labels
-#     combined_array[2, :] = cropped_images.classifier
-#     return combined_array
-
 
 def delete_old_data(well, classification_name, conn):
     for ann in well.listAnnotations():
@@ -81,7 +72,7 @@ def delete_old_data(well, classification_name, conn):
             file_name = original_file.getName()
 
             # Check if the file name matches your criteria
-            if file_name == f"{classification_name}.npy":
+            if file_name == f"{classification_name}.pkl":
                 print(f"Found file {file_name}. Deleting it...")
 
                 # Delete the FileAnnotation
