@@ -30,19 +30,14 @@ from magicgui import magic_factory
 from magicgui.widgets import Container
 from scipy.ndimage import zoom
 
-channel_list = list(viewer_data.channel_data.keys())
 
 # iniatiate combined widget with two magic factories in a container
 def gui_widget():
     # Call the magic factories to get the widget instances
-    global training_widget_instance
     training_widget_instance = training_widget()
+    function2_instance = function2()
 
-    saving_widget_instance = saving_widget()
-    print(training_widget_instance.exp_name.value)
-
-    return Container(widgets=[training_widget_instance, saving_widget_instance])
-
+    return Container(widgets=[training_widget_instance, function2_instance])
 
 
 @magic_factory(
@@ -53,46 +48,24 @@ def gui_widget():
 )
 def training_widget(
     # viewer: "napari.viewer.Viewer",
-
+    exp_name: str,
     segmentation: str,
     crop_size: int,
     cellcycle: str,
-    exp_name: str = None,
     contour: bool = True,
-    blue_channel: str = channel_list[0] if len(channel_list) > 0 else None,
-    green_channel: str = channel_list[1] if len(channel_list) > 1 else None,
-    red_channel: str = channel_list[2] if len(channel_list) > 2 else None,
+    blue_channel: str = "DAPI",
+    green_channel: str = "Tub",
+    red_channel: str = "EdU",
 ):
-    if exp_name != "None":
-        get_saved_data(viewer_data.well_id, exp_name)
-        training_widget_instance.segmentation.value = cropped_images.classifier['segmentation']
-        training_widget_instance.crop_size.value = cropped_images.classifier['crop_size']
-        training_widget_instance.cellcycle.value = cropped_images.classifier['cellcycle']
-        training_widget_instance.contour.value = cropped_images.classifier['contour']
-        training_widget_instance.blue_channel.value = cropped_images.classifier['blue_channel']
-        training_widget_instance.green_channel.value = cropped_images.classifier['green_channel']
-        training_widget_instance.red_channel.value = cropped_images.classifier['red_channel']
-
+    if exp_name:
+        well_id = viewer_data.well_id
+        get_saved_data(well_id, exp_name)
     else:
-        classifier = {
-            "segmentation": segmentation,
-            "crop_size": crop_size,
-            "cellcycle": cellcycle,
-            "exp_name": exp_name,
-            "contour": contour,
-            "blue_channel": blue_channel,
-            "green_channel": green_channel,
-            "red_channel": red_channel,
-            "labels": []
-        }
-        cropped_images.classifier = classifier
-
-    channels = [training_widget_instance.blue_channel.value, training_widget_instance.green_channel.value, training_widget_instance.red_channel.value]
-    get_cropped_images(
-        channels, segmentation, crop_size, contour, cellcycle
-    )
-    if exp_name == "None":
-        cropped_images.classifier["labels"] = ["unassigned"] * len(
+        channels = [blue_channel, green_channel, red_channel]
+        get_cropped_images(
+            channels, segmentation, crop_size, contour, cellcycle
+        )
+        cropped_images.classifier = ["unassigned"] * len(
             cropped_images.cropped_regions
         )
     app = QApplication.instance()
@@ -104,7 +77,7 @@ def training_widget(
 
 
 @magic_factory(call_button="Save")
-def saving_widget(exp_name: str):
+def function2(exp_name: str):
     well_id = viewer_data.well_id
     save_trainingdata(well_id, exp_name)
 
@@ -210,20 +183,14 @@ class TrainingDataWidget(QWidget):
         return self.info_label
 
     def create_text_fields_and_buttons(self):
-        # get list of labels
-        labels = set(cropped_images.classifier['labels'])
-        other_values = [value for value in labels if value != 'unassigned']
-        # Calculate how many 'unassigned' values we need
-        num_unassigned = 4 - len(other_values)
-        final_labels = other_values + ['unassigned'] * num_unassigned
         text_button_layout = QVBoxLayout()
-        for i in range(4):
+        for i in range(1, 5):
             hbox = QHBoxLayout()
-            line_edit = QLineEdit(final_labels[i])
+            line_edit = QLineEdit(f"Class_{i}")
             self.class_name_edits.append(line_edit)
             button = QPushButton("Enter")
             button.clicked.connect(
-                partial(self.on_class_enter_button_clicked, i)
+                partial(self.on_class_enter_button_clicked, i - 1)
             )
             hbox.addWidget(line_edit)
             hbox.addWidget(button)
@@ -235,13 +202,13 @@ class TrainingDataWidget(QWidget):
             cropped_image = cropped_images.cropped_regions[
                 self.current_image_index
             ]
-            classifier_label = cropped_images.classifier['labels'][
+            classifier_label = cropped_images.classifier[
                 self.current_image_index
             ]  # New line
             qimage = array_to_qimage(cropped_image)
             pixmap = QPixmap.fromImage(qimage)
             self.image_label.setPixmap(
-                pixmap.scaled(1600, 800, Qt.KeepAspectRatio)
+                pixmap.scaled(800, 800, Qt.KeepAspectRatio)
             )
             self.update_info_label(classifier_label)  # Updated
         else:
@@ -272,7 +239,7 @@ class TrainingDataWidget(QWidget):
 
     def on_class_enter_button_clicked(self, class_index):
         class_name = self.class_name_edits[class_index].text()
-        cropped_images.classifier['labels'][
+        cropped_images.classifier[
             self.current_image_index
         ] = class_name  # Update the classifier label
         self.update_image_and_info()  # Refresh the displayed information
@@ -311,14 +278,9 @@ def normalize_to_uint8(img):
 def array_to_qimage(array):
     # Normalize the array to uint8
     array = normalize_to_uint8(array)
-    channel_list = [
-        cropped_images.classifier['blue_channel'],
-        cropped_images.classifier['green_channel'],
-        cropped_images.classifier['red_channel']]
     # If the input array is a single-channel image, just show a single grayscale image
-    if channel_list.count('') == 2:
-        squashed_image = np.max(array, axis=-1)
-        gray_image = 255 - squashed_image  # invert grayscale
+    if len(array.shape) == 2 or (len(array.shape) == 3 and array.shape[2] == 1):
+        gray_image = 255 - array  # invert grayscale
         height, width = gray_image.shape
         bytesPerLine = width
         gray_image = np.require(gray_image, np.uint8, "C")
@@ -334,7 +296,7 @@ def array_to_qimage(array):
         return np.stack([image, image, image], axis=-1)
 
     # For the green and blue channels
-    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in [0, 2]]
+    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in [1, 2]]
 
     # Resize the grayscale images and convert them to 3-channel grayscale
     resized_gray_images = [to_three_channel(zoom(image, (6, 6), order=1)) for image in gray_images]
@@ -366,7 +328,7 @@ if __name__ == "__main__":
         sample_data[i, :, :, :] for i in range(sample_data.shape[0])
     ]
 
-    cropped_images.classifier['labels'] = ["unassigned"] * len(
+    cropped_images.classifier = ["unassigned"] * len(
         cropped_images.cropped_regions
     )
 

@@ -6,7 +6,7 @@ import pandas as pd
 
 @dataclass
 class ViewerData:
-    project_id: int = 5313
+    project_id: int = 151
     plate_id: int = field(default_factory=int)
     plate_name: str = field(default_factory=str)
     plate: _PlateWrapper = field(default_factory=_PlateWrapper)
@@ -26,7 +26,7 @@ class ViewerData:
 class CroppedImages:
     cropped_regions: list = field(default_factory=list)
     cropped_labels: list = field(default_factory=list)
-    classifier: list = field(default_factory=list)
+    classifier: dict = field(default_factory=dict)
 
 
 viewer_data = ViewerData()
