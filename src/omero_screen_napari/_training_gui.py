@@ -62,31 +62,38 @@ def training_widget(
     green_channel: str = channel_list[1] if len(channel_list) > 1 else None,
     red_channel: str = channel_list[2] if len(channel_list) > 2 else None,
 ):
-    # if exp_name != "None":
-    #     training_widget_instance.blue_channel.value = 'EdU'
-    # add the classifier metadata to the cropped_images dataclass
-    classifier = {
-        "segmentation": segmentation,
-        "crop_size": crop_size,
-        "cellcycle": cellcycle,
-        "exp_name": exp_name,
-        "contour": contour,
-        "blue_channel": blue_channel,
-        "green_channel": green_channel,
-        "red_channel": red_channel,
-        "labels": []
-    }
-    cropped_images.classifier = classifier
-    channels = [blue_channel, green_channel, red_channel]
+    if exp_name != "None":
+        get_saved_data(viewer_data.well_id, exp_name)
+        training_widget_instance.segmentation.value = cropped_images.classifier['segmentation']
+        training_widget_instance.crop_size.value = cropped_images.classifier['crop_size']
+        training_widget_instance.cellcycle.value = cropped_images.classifier['cellcycle']
+        training_widget_instance.contour.value = cropped_images.classifier['contour']
+        training_widget_instance.blue_channel.value = cropped_images.classifier['blue_channel']
+        training_widget_instance.green_channel.value = cropped_images.classifier['green_channel']
+        training_widget_instance.red_channel.value = cropped_images.classifier['red_channel']
+
+    else:
+        classifier = {
+            "segmentation": segmentation,
+            "crop_size": crop_size,
+            "cellcycle": cellcycle,
+            "exp_name": exp_name,
+            "contour": contour,
+            "blue_channel": blue_channel,
+            "green_channel": green_channel,
+            "red_channel": red_channel,
+            "labels": []
+        }
+        cropped_images.classifier = classifier
+
+    channels = [training_widget_instance.blue_channel.value, training_widget_instance.green_channel.value, training_widget_instance.red_channel.value]
     get_cropped_images(
         channels, segmentation, crop_size, contour, cellcycle
     )
-    cropped_images.classifier["labels"] = ["unassigned"] * len(
-        cropped_images.cropped_regions
-    )
-    if exp_name != "None":
-        get_saved_data(viewer_data.well_id, exp_name)
-
+    if exp_name == "None":
+        cropped_images.classifier["labels"] = ["unassigned"] * len(
+            cropped_images.cropped_regions
+        )
     app = QApplication.instance()
     if app is None:
         app = QApplication(

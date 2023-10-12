@@ -34,10 +34,6 @@ def read_data(ann):
     return file_bytes
 
 
-def store_data(data_array):
-    cropped_images.classifier = data_array.tolist()
-
-
 @omero_connect
 def save_trainingdata(well_id, classification_name, conn=None):
     well = conn.getObject("Well", well_id)
