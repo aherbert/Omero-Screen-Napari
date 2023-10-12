@@ -278,24 +278,41 @@ def normalize_to_uint8(img):
 def array_to_qimage(array):
     # Normalize the array to uint8
     array = normalize_to_uint8(array)
+    # If the input array is a single-channel image, just show a single grayscale image
+    if len(array.shape) == 2 or (len(array.shape) == 3 and array.shape[2] == 1):
+        gray_image = 255 - array  # invert grayscale
+        height, width = gray_image.shape
+        bytesPerLine = width
+        gray_image = np.require(gray_image, np.uint8, "C")
+        return QImage(gray_image.data, width, height, bytesPerLine, QImage.Format_Grayscale8)
 
     # Convert RGB channel to reversed gray
     def rgb_to_reversed_gray(channel):
         gray = 255 - channel  # Inverting the grayscale image
         return gray
-    # Split the RGB image into 3 grayscale images, one for each channel
-    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in range(3)]
-    resized_images = [zoom(image, 6, order=1) for image in gray_images]
 
-    # Concatenate the grayscale images side by side
-    concatenated_image = np.hstack(resized_images)
+    # Convert single channel grayscale to 3-channel grayscale
+    def to_three_channel(image):
+        return np.stack([image, image, image], axis=-1)
 
-    # Existing QImage conversion code
-    height, width = concatenated_image.shape
-    bytesPerLine = width
+    # For the green and blue channels
+    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in [1, 2]]
+
+    # Resize the grayscale images and convert them to 3-channel grayscale
+    resized_gray_images = [to_three_channel(zoom(image, (6, 6), order=1)) for image in gray_images]
+
+    # Rescale the original image too, to match the other images in size
+    resized_rgb = zoom(array, (6, 6, 1), order=1)
+
+    # Concatenate the grayscale images and the RGB image side by side
+    concatenated_image = np.hstack(resized_gray_images + [resized_rgb])
+
+    # Convert to QImage
+    height, width, _ = concatenated_image.shape
+    bytesPerLine = width * 3
     concatenated_image = np.require(concatenated_image, np.uint8, "C")
     return QImage(
-        concatenated_image.data, width, height, bytesPerLine,  QImage.Format_Grayscale8
+        concatenated_image.data, width, height, bytesPerLine, QImage.Format_RGB888
     )
 
 

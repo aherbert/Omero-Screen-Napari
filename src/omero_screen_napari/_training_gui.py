@@ -28,6 +28,7 @@ import numpy as np
 from functools import partial
 from magicgui import magic_factory
 from magicgui.widgets import Container
+from scipy.ndimage import zoom
 
 channel_list = list(viewer_data.channel_data.keys())
 
@@ -209,14 +210,20 @@ class TrainingDataWidget(QWidget):
         return self.info_label
 
     def create_text_fields_and_buttons(self):
+        # get list of labels
+        labels = set(cropped_images.classifier['labels'])
+        other_values = [value for value in labels if value != 'unassigned']
+        # Calculate how many 'unassigned' values we need
+        num_unassigned = 4 - len(other_values)
+        final_labels = other_values + ['unassigned'] * num_unassigned
         text_button_layout = QVBoxLayout()
-        for i in range(1, 5):
+        for i in range(4):
             hbox = QHBoxLayout()
-            line_edit = QLineEdit(f"Class_{i}")
+            line_edit = QLineEdit(final_labels[i])
             self.class_name_edits.append(line_edit)
             button = QPushButton("Enter")
             button.clicked.connect(
-                partial(self.on_class_enter_button_clicked, i - 1)
+                partial(self.on_class_enter_button_clicked, i)
             )
             hbox.addWidget(line_edit)
             hbox.addWidget(button)
@@ -234,7 +241,7 @@ class TrainingDataWidget(QWidget):
             qimage = array_to_qimage(cropped_image)
             pixmap = QPixmap.fromImage(qimage)
             self.image_label.setPixmap(
-                pixmap.scaled(400, 400, Qt.KeepAspectRatio)
+                pixmap.scaled(1600, 800, Qt.KeepAspectRatio)
             )
             self.update_info_label(classifier_label)  # Updated
         else:
@@ -304,13 +311,46 @@ def normalize_to_uint8(img):
 def array_to_qimage(array):
     # Normalize the array to uint8
     array = normalize_to_uint8(array)
+    channel_list = [
+        cropped_images.classifier['blue_channel'],
+        cropped_images.classifier['green_channel'],
+        cropped_images.classifier['red_channel']]
+    # If the input array is a single-channel image, just show a single grayscale image
+    if channel_list.count('') == 2:
+        squashed_image = np.max(array, axis=-1)
+        gray_image = 255 - squashed_image  # invert grayscale
+        height, width = gray_image.shape
+        bytesPerLine = width
+        gray_image = np.require(gray_image, np.uint8, "C")
+        return QImage(gray_image.data, width, height, bytesPerLine, QImage.Format_Grayscale8)
 
-    # Existing QImage conversion code
-    height, width, _ = array.shape
+    # Convert RGB channel to reversed gray
+    def rgb_to_reversed_gray(channel):
+        gray = 255 - channel  # Inverting the grayscale image
+        return gray
+
+    # Convert single channel grayscale to 3-channel grayscale
+    def to_three_channel(image):
+        return np.stack([image, image, image], axis=-1)
+
+    # For the green and blue channels
+    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in [0, 2]]
+
+    # Resize the grayscale images and convert them to 3-channel grayscale
+    resized_gray_images = [to_three_channel(zoom(image, (6, 6), order=1)) for image in gray_images]
+
+    # Rescale the original image too, to match the other images in size
+    resized_rgb = zoom(array, (6, 6, 1), order=1)
+
+    # Concatenate the grayscale images and the RGB image side by side
+    concatenated_image = np.hstack(resized_gray_images + [resized_rgb])
+
+    # Convert to QImage
+    height, width, _ = concatenated_image.shape
     bytesPerLine = width * 3
-    array = np.require(array, np.uint8, "C")
+    concatenated_image = np.require(concatenated_image, np.uint8, "C")
     return QImage(
-        array.data, width, height, bytesPerLine, QImage.Format_RGB888
+        concatenated_image.data, width, height, bytesPerLine, QImage.Format_RGB888
     )
 
 
