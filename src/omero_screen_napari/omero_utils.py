@@ -2,6 +2,7 @@ import functools
 from omero.gateway import BlitzGateway
 import json
 from pathlib import Path
+from omero_screen_napari.viewer_data_module import viewer_data
 
 
 def omero_connect(func):
@@ -25,6 +26,7 @@ def omero_connect(func):
             username = data["username"]
             password = data["password"]
             host = data["host"]
+            viewer_data.project_id = data["project_id"]
             conn = BlitzGateway(username, password, host=host)
         except IOError:
             print("could not get login data")

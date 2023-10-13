@@ -16,7 +16,6 @@ from omero.gateway import FileAnnotationWrapper
 from qtpy.QtWidgets import QMessageBox, QLabel, QVBoxLayout, QWidget
 from skimage import exposure
 from tqdm import tqdm
-
 from omero_screen_napari.omero_utils import omero_connect
 from omero_screen_napari.viewer_data_module import viewer_data
 
