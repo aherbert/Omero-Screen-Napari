@@ -39,27 +39,27 @@ def show_gallery(
 ):
     filtered_channels = list(filter(None, channels))
 
+    try:
+        images = select_channels(filtered_channels)
+        generate_crops(images, segmentation, cellcycle, crop_size)
+        plot_random_gallery(
+            channels,
+            crop_size,
+            cellcycle,
+            contour=contour,
+            n_row=rows,
+            n_col=columns,
+            padding=5,
+        )
+    except Exception as e:
 
-    images = select_channels(filtered_channels)
-    generate_crops(images, segmentation, cellcycle, crop_size)
-    plot_random_gallery(
-        channels,
-        crop_size,
-        cellcycle,
-        contour=contour,
-        n_row=rows,
-        n_col=columns,
-        padding=5,
-    )
-    # except Exception as e:
-    #
-        # # Show a message box with the error message
-        # msg_box = QMessageBox()
-        # msg_box.setIcon(QMessageBox.Warning)
-        # msg_box.setText(str(e))
-        # msg_box.setWindowTitle("Error")
-        # msg_box.setStandardButtons(QMessageBox.Ok)
-        # msg_box.exec_()
+        # Show a message box with the error message
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(str(e))
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
 
 
 def select_channels(channels: list[str]) -> np.ndarray:
@@ -79,8 +79,6 @@ def generate_crops(image_data, segmentation, cellcycle, crop_size):
     """
     Crop regions around each segmented object in the image.
     """
-    if cropped_images.cropped_regions or cropped_images.cropped_labels:
-        return
     cropped_regions = []
     cropped_labels = []
     # Iterate through individual images

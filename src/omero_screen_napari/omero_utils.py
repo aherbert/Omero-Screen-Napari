@@ -17,7 +17,7 @@ def omero_connect(func):
 
         # Construct the absolute path to the secrets file
         secrets_path = (
-            current_file_path.parent / "data" / "secrets" / "config.json"
+            current_file_path.parent / "data" / "secrets" / "config_server.json"
         )
         try:
             with open(secrets_path) as file:
