@@ -29,6 +29,7 @@ def welldata_widget(
         plate_id: str = "Plate ID",
         well_pos: str = "Well Position",
         images: str = "All",
+        image_id: int = 0,
 ):
     global metadata_widget
     # Clear all layers from the viewer

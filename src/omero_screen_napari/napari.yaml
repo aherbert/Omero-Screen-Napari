@@ -6,7 +6,7 @@ contributions:
       python_name: omero_screen_napari._welldata_widget:welldata_widget
       title: Make Welldata widget
     - id: omero-screen-napari.gallery_widget
-      python_name: omero_screen_napari._gallery_widget:gallery_widget
+      python_name: omero_screen_napari._gallery_widget:gallery_gui_widget
       title: Make Gallery widget
     - id: omero-screen-napari.training_gui
       python_name: omero_screen_napari._training_gui:gui_widget

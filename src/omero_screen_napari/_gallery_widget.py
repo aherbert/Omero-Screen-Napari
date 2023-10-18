@@ -3,21 +3,36 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 from magicgui import magic_factory
+from magicgui.widgets import Container
 from qtpy.QtWidgets import QMessageBox
 from skimage.measure import regionprops, label, find_contours
 
 from omero_screen_napari.viewer_data_module import viewer_data, cropped_images
 
+def gallery_gui_widget():
+    # Call the magic factories to get the widget instances
+    gallery_widget_instance = gallery_widget()
+    reset_widget_instance = reset_widget()
+    return Container(widgets=[gallery_widget_instance, reset_widget_instance])
+@magic_factory(
+    call_button="Enter",
+)
+def reset_widget():
+    cropped_images.cropped_regions = []
+    cropped_images.cropped_labels = []
+
 
 @magic_factory(
     call_button="Enter",
     segmentation={"choices": ["Nuclei", "Cells"]},
+    replacement={"choices": ["With", "Without"]},
     crop_size={"choices": [20, 30, 50, 100]},
     cellcycle={"choices": ["All", "G1", "S", "G2/M", "G2", "M", "Polyploid"]},
 )
 def gallery_widget(
     # viewer: "napari.viewer.Viewer",
     segmentation: str,
+    replacement: str,
     crop_size: int,
     cellcycle: str,
     columns: int = 4,
@@ -30,18 +45,19 @@ def gallery_widget(
     channels = [red_channel, green_channel, blue_channel]
 
     show_gallery(
-        channels, segmentation, crop_size, rows, columns, contour, cellcycle
+        channels, segmentation, replacement, crop_size, rows, columns, contour, cellcycle
     )
 
 
 def show_gallery(
-    channels, segmentation, crop_size, rows, columns, contour, cellcycle
+    channels, segmentation, replacement, crop_size, rows, columns, contour, cellcycle
 ):
     filtered_channels = list(filter(None, channels))
 
     try:
         images = select_channels(filtered_channels)
-        generate_crops(images, segmentation, cellcycle, crop_size)
+        if replacement == "With" or cropped_images.cropped_regions == []:
+            generate_crops(images, segmentation, cellcycle, crop_size)
         plot_random_gallery(
             channels,
             crop_size,
