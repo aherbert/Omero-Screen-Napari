@@ -9,8 +9,9 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
 )
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QFont
 from PyQt5.QtCore import Qt
+
 
 from omero_screen_napari.viewer_data_module import viewer_data, cropped_images
 from omero_screen_napari._gallery_widget import (
@@ -59,9 +60,9 @@ def training_widget(
     cellcycle: str,
     exp_name: str = None,
     contour: bool = True,
-    blue_channel: str = channel_list[0] if len(channel_list) > 0 else None,
+    red_channel: str = channel_list[2] if len(channel_list) > 0 else None,
     green_channel: str = channel_list[1] if len(channel_list) > 1 else None,
-    red_channel: str = channel_list[2] if len(channel_list) > 2 else None,
+    blue_channel: str = channel_list[0] if len(channel_list) > 2 else None,
 ):
     if exp_name != "None":
         get_saved_data(viewer_data.well_id, exp_name)
@@ -241,7 +242,7 @@ class TrainingDataWidget(QWidget):
             qimage = array_to_qimage(cropped_image)
             pixmap = QPixmap.fromImage(qimage)
             self.image_label.setPixmap(
-                pixmap.scaled(1600, 800, Qt.KeepAspectRatio)
+                pixmap.scaled(800, 400, Qt.KeepAspectRatio)
             )
             self.update_info_label(classifier_label)  # Updated
         else:
@@ -309,14 +310,17 @@ def normalize_to_uint8(img):
 
 
 def array_to_qimage(array):
+
     # Normalize the array to uint8
     array = normalize_to_uint8(array)
     channel_list = [
-        cropped_images.classifier['blue_channel'],
+        cropped_images.classifier['red_channel'],
         cropped_images.classifier['green_channel'],
-        cropped_images.classifier['red_channel']]
+        cropped_images.classifier['blue_channel']]
+    channel_list = [item for item in channel_list if item != '']
+
     # If the input array is a single-channel image, just show a single grayscale image
-    if channel_list.count('') == 2:
+    if len(channel_list) == 1:
         squashed_image = np.max(array, axis=-1)
         gray_image = 255 - squashed_image  # invert grayscale
         height, width = gray_image.shape
@@ -324,17 +328,20 @@ def array_to_qimage(array):
         gray_image = np.require(gray_image, np.uint8, "C")
         return QImage(gray_image.data, width, height, bytesPerLine, QImage.Format_Grayscale8)
 
-    # Convert RGB channel to reversed gray
+        # Convert RGB channel to reversed gray
+
     def rgb_to_reversed_gray(channel):
         gray = 255 - channel  # Inverting the grayscale image
         return gray
 
-    # Convert single channel grayscale to 3-channel grayscale
+        # Convert single channel grayscale to 3-channel grayscale
+
     def to_three_channel(image):
         return np.stack([image, image, image], axis=-1)
 
-    # For the green and blue channels
-    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in [0, 2]]
+        # For the selected channels
+
+    gray_images = [rgb_to_reversed_gray(array[:, :, i]) for i in range(len(channel_list))]
 
     # Resize the grayscale images and convert them to 3-channel grayscale
     resized_gray_images = [to_three_channel(zoom(image, (6, 6), order=1)) for image in gray_images]
@@ -345,14 +352,38 @@ def array_to_qimage(array):
     # Concatenate the grayscale images and the RGB image side by side
     concatenated_image = np.hstack(resized_gray_images + [resized_rgb])
 
-    # Convert to QImage
+    # Adjust the title height and create QImage
+    title_height = 30  # Height of the area reserved for titles
     height, width, _ = concatenated_image.shape
+    total_height = height + title_height
     bytesPerLine = width * 3
-    concatenated_image = np.require(concatenated_image, np.uint8, "C")
-    return QImage(
-        concatenated_image.data, width, height, bytesPerLine, QImage.Format_RGB888
-    )
+    q_image = QImage(width, total_height, QImage.Format_RGB888)
+    q_image.fill(QColor(255, 255, 255))  # Fill with white or any background color
 
+    # Draw titles on the image
+    painter = QPainter(q_image)
+    painter.setPen(QColor(0, 0, 0))  # Black color for text
+    painter.setFont(QFont('Arial', 12))  # Font settings
+
+    # Adjust single_image_width based on the number of channels
+    num_images = len(channel_list) + 1  # +1 for the overlay
+    single_image_width = width // num_images
+
+    # Add 'Overlay' to the channel list for the title
+    channel_list.append('Overlay')
+
+    # Draw titles
+    for i, channel in enumerate(channel_list):
+        title = channel
+        painter.drawText(single_image_width * i + 10, title_height - 10, title)
+
+    # Draw the concatenated image below the titles
+    painter.drawImage(0, title_height,
+                      QImage(concatenated_image.data, width, height, bytesPerLine, QImage.Format_RGB888))
+
+    painter.end()
+
+    return q_image
 
 if __name__ == "__main__":
 

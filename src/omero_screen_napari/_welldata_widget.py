@@ -63,8 +63,9 @@ def welldata_widget(
         # upper_limit = np.percentile(layer.data, 99.9)
         # layer.contrast_limits = (lower_limit, upper_limit)
 
-    if viewer_data.labels.shape[3] == 1:
+    if len(viewer_data.labels.shape) == 3:
         viewer.add_labels(viewer_data.labels.astype(int), name="Nuclei Masks")
+    #TODO add exception for when there are no labels
     else:
         # Split the last dimension to get two arrays of shape (3, 1020, 1020)
         channel_1_masks = viewer_data.labels[..., 0].astype(int)
@@ -148,7 +149,7 @@ def _get_data(plate_id: str, well_pos: str, images: str, conn=None):
         _get_segmentation_masks(conn)
 
     except Exception as e:
-        print(f"the error is {e}")
+        print(f"b {e}")
         # Show a message box with the error message
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)

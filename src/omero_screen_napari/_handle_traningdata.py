@@ -1,10 +1,11 @@
-from omero_screen_napari.viewer_data_module import viewer_data, cropped_images
-from omero_screen_napari.omero_utils import omero_connect
-import numpy as np
-import tempfile
-import omero
-from io import BytesIO
 import pickle
+import tempfile
+
+import numpy as np
+import omero
+
+from omero_screen_napari.omero_utils import omero_connect
+from omero_screen_napari.viewer_data_module import cropped_images
 
 
 @omero_connect
