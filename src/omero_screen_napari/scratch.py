@@ -1,18 +1,17 @@
-from dotenv import load_dotenv
-import os
+import pandas as pd
+import numpy as np
 
-# Assuming this block is intended to choose between .env and .localenv
-try:
-    # Specify the path if .localenv is not in the current directory
-    dotenv_path = '.localenv'  # or the full path to your .localenv file
-    load_dotenv(dotenv_path=dotenv_path)
-except IOError:
-    # Fallback to default .env or handle the error
-    load_dotenv()  # This will default to loading .env if present
-
-# After loading, retrieve your environment variables
-username = os.getenv("USERNAME")
-password = os.getenv("PASSWORD")
-host = os.getenv("HOST")
-
-print(username, password, host)
+df = pd.read_csv('~/Desktop/test_plate03_final_data_cc.csv', index_col=0)
+channels = {
+    'channel_0': 'DAPI',
+    'channel_1': 'Tub',
+    'channel_2': 'p21',
+    'channel_3': 'EdU',
+}
+intensity_dict = {}
+for key, value in channels.items():
+    
+    max_value = df[f"intensity_max_{value}_nucleus"].median()
+    min_value = df[f"intensity_min_{value}_nucleus"].median()
+    intensity_dict[int(key.split('_')[1])] = (max_value, min_value)
+print(intensity_dict)

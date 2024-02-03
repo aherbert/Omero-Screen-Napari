@@ -5,10 +5,12 @@ The plugin can be run from napari as Welldata Widget under Plugins.
 
 
 # Logging
+import atexit
 import logging
+import os
 import re
 import tempfile
-from typing import Optional
+from typing import Optional, Tuple
 
 import napari
 import numpy as np
@@ -22,14 +24,13 @@ from qtpy.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari.custom_logging import setup_logging
 from omero_screen_napari.omero_utils import omero_connect
 from omero_screen_napari.viewer_data_module import viewer_data
 
 # Looging
-setup_logging()
-logger = logging.getLogger("omero_screen_napari")
-logger.setLevel(logging.DEBUG)
+
+logger = logging.getLogger("omero-screen-napari")
+
 
 # Global variable to keep track of the existing metadata widget
 metadata_widget: Optional[QWidget] = None
@@ -79,7 +80,11 @@ def clear_viewer_layers(viewer: Viewer) -> None:
 
 
 def add_image_to_viewer(viewer: Viewer) -> None:
-    viewer.add_image(viewer_data.images, channel_axis=-1)
+    viewer.add_image(
+        viewer_data.images, channel_axis=-1, scale=viewer_data.pixel_size
+    )
+    viewer.scale_bar.visible = True
+    viewer.scale_bar.unit = "µm"
 
 
 def handle_metadata_widget(viewer: Viewer) -> None:
@@ -102,13 +107,16 @@ def set_color_maps(viewer: Viewer) -> None:
 
 
 def add_label_layers(viewer: Viewer) -> None:
+    scale = viewer_data.pixel_size
     if len(viewer_data.labels.shape) == 3:
-        viewer.add_labels(viewer_data.labels.astype(int), name="Nuclei Masks")
+        viewer.add_labels(
+            viewer_data.labels.astype(int), name="Nuclei Masks", scale=scale
+        )
     elif viewer_data.labels.shape[3] == 2:
         channel_1_masks = viewer_data.labels[..., 0].astype(int)
         channel_2_masks = viewer_data.labels[..., 1].astype(int)
-        viewer.add_labels(channel_1_masks, name="Nuclei Masks")
-        viewer.add_labels(channel_2_masks, name="Cell Masks")
+        viewer.add_labels(channel_1_masks, name="Nuclei Masks", scale=scale)
+        viewer.add_labels(channel_2_masks, name="Cell Masks", scale=scale)
     else:
         raise ValueError("Invalid segmentation label shape")
 
@@ -199,8 +207,8 @@ def retrieve_data(
     """
     try:
         _get_omero_objects(conn, plate_id, well_pos)
-        _get_well_data()
         _get_channel_data()
+        _get_csv_data()
         _get_well_metadata()
         _get_images(images, conn)
         _get_segmentation_masks(conn)
@@ -241,7 +249,11 @@ def _get_omero_objects(
         raise ValueError(f"Plate with ID {plate_id} does not exist")
     viewer_data.plate_name = viewer_data.plate.getName()
     viewer_data.well_name = well_pos
-
+    pixel_x, pixel_y = get_pixel_size(viewer_data.plate)
+    viewer_data.pixel_size = (
+        round(pixel_x.getValue(), 1),
+        round(pixel_y.getValue(), 1),
+    )
     well_found = False  # Initialize a flag to check if the well is found
     # get well object
     for well in viewer_data.plate.listChildren():
@@ -265,33 +277,20 @@ def _get_omero_objects(
         )
 
 
-def _get_well_data():
-    file_anns = viewer_data.plate.listAnnotations()
-    for ann in file_anns:
-        if isinstance(
-            ann, FileAnnotationWrapper
-        ) and ann.getFile().getName().endswith("final_data.csv"):
-            original_file = ann.getFile()
-            with tempfile.NamedTemporaryFile(
-                suffix=".csv", delete=False
-            ) as tmp:
-                _download_file_to_tmp(original_file, tmp)
-                tmp.flush()  # Ensure all data is written to the temp file
-                data = pd.read_csv(tmp.name, index_col=0)
-                viewer_data.plate_data = data[
-                    data["well"] == viewer_data.well.getWellPos()
-                ]
-
-
-def _download_file_to_tmp(original_file, tmp):
-    with open(tmp.name, "wb") as f:
-        for chunk in original_file.asFileObj():
-            f.write(chunk)
+def get_pixel_size(plate: omero.gateway.PlateWrapper) -> float:
+    """
+    Get the pixel size from the plate metadata.
+    :param plate: The plate object.
+    :return: The pixel size.
+    """
+    well = list(plate.listChildren())[0]
+    image = well.getImage(0)
+    pixels = image.getPrimaryPixels()
+    return pixels.getPhysicalSizeX(), pixels.getPhysicalSizeY()
 
 
 def _get_channel_data():
     map_ann = _get_map_ann(viewer_data.plate)
-    print(f"map_ann: {map_ann}")
     channel_data = dict(map_ann)
     cleaned_channel_data = {
         key.strip(): value for key, value in channel_data.items()
@@ -313,9 +312,54 @@ def _get_map_ann(omero_object):
         raise ValueError(
             f"Map annotation not found for {viewer_data.plate.getName()}."
         )
-    print(f"Found map annotation for {viewer_data.plate.getName()}")
-    print(map_annotations[0].getValue())
     return map_annotations[0].getValue()
+
+
+# metadata organisation
+def _get_csv_data():
+    file_anns = viewer_data.plate.listAnnotations()
+    for ann in file_anns:
+        if isinstance(
+            ann, FileAnnotationWrapper
+        ) and ann.getFile().getName().endswith("final_data.csv"):
+            original_file = ann.getFile()
+            with tempfile.NamedTemporaryFile(
+                suffix=".csv", delete=False
+            ) as tmp:
+                _download_file_to_tmp(original_file, tmp)
+                tmp.flush()  # Ensure all data is written to the temp file
+                data = pd.read_csv(tmp.name, index_col=0)
+                viewer_data.plate_data = data[
+                    data["well"] == viewer_data.well.getWellPos()
+                ]
+                viewer_data.intensities = _get_intensity_values(data)
+                # Register the cleanup function for this temporary file
+                atexit.register(cleanup_temp_file, tmp.name)
+
+
+# TODO write function to get the global scaling values for each channel
+def _get_intensity_values(df: pd.DataFrame) -> dict[str, Tuple]:
+    intensity_dict = {}
+    for key, value in viewer_data.channel_data.items():
+        print(key, value)
+        max_value = int(df[f"intensity_max_{key}_nucleus"].max())
+        min_value = int(df[f"intensity_min_{key}_nucleus"].min())
+        intensity_dict[int(value)] = (min_value, max_value)
+    return intensity_dict
+
+
+def _download_file_to_tmp(original_file, tmp):
+    with open(tmp.name, "wb") as f:
+        for chunk in original_file.asFileObj():
+            f.write(chunk)
+
+
+def cleanup_temp_file(filepath):
+    try:
+        os.remove(filepath)
+        logger.info(f"Deleted temporary file: {filepath}")
+    except Exception as e:
+        logger.error(f"Error deleting temporary file: {e}")
 
 
 def _get_well_metadata():
@@ -380,19 +424,19 @@ def _process_omero_image(
     )
     image_array = image_array.squeeze()
     corrected_array = image_array / flatfield_array
-
     # Iterate through each channel to scale it
     scaled_channels = []
     for i in range(corrected_array.shape[-1]):
-        scaled_channel = scale_img(corrected_array[..., i])
+        scaled_channel = scale_img(
+            corrected_array[..., i], viewer_data.intensities[i]
+        )
         scaled_channels.append(scaled_channel)
     return image.getId(), np.stack(scaled_channels, axis=-1)
 
 
-def scale_img(img: np.array, percentile: tuple = (0.1, 99.9)) -> np.array:
+def scale_img(img: np.array, intensities: tuple) -> np.array:
     """Increase contrast by scaling image to exclude lowest and highest intensities"""
-    percentiles = np.percentile(img, (percentile[0], percentile[1]))
-    return exposure.rescale_intensity(img, in_range=tuple(percentiles))
+    return exposure.rescale_intensity(img, in_range=intensities)
 
 
 def _get_flatfieldmask(conn):
@@ -423,8 +467,6 @@ def _check_flatfieldmask(flatfield_channels):
             print(
                 f"Inconsistency found: {channel} is mapped to {index} in plate_map but {reverse_flatfield_mask[channel]} in flatfield_mask"
             )
-        else:
-            print("Flatfield mask is consistent with images")
 
 
 # get the image labels

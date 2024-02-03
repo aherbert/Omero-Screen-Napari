@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-
-
-import napari
 import os
+
+os.environ["USE_LOCAL_ENV"] = "1"
+print(
+    f'environment_var = {os.environ.get("USE_LOCAL_ENV")}'
+)  # This should print "1"
+import napari
+
 from omero_screen_napari._welldata_widget import welldata_widget
 
 
 def test_welldata_widget_interactively():
     # Start Napari
+
     viewer = napari.Viewer()
 
     # Initialize the welldata_widget and add it to the viewer
@@ -31,5 +36,4 @@ def test_welldata_widget_interactively():
 
 
 if __name__ == "__main__":
-    os.environ["USE_LOCAL_ENV"] = "1"
     test_welldata_widget_interactively()

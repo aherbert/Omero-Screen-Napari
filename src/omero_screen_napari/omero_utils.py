@@ -12,8 +12,12 @@ def omero_connect(func):
     :param func: function to be decorated
     :return: wrapper function: passes conn to function and closes it after execution
     """
-    # Check if the environment variable is set
-    dotenv_path = ".localenv" if os.getenv("USE_LOCAL_ENV") == "1" else ".env"
+    print(f'omero environment_var = {os.environ.get("USE_LOCAL_ENV")}')
+    dotenv_path = (
+        "/Users/hh65/Documents/Current_Coding/Omero-Screen-Napari/omero-screen-napari/src/.localenv"
+        if os.getenv("USE_LOCAL_ENV") == "1"
+        else ".env"
+    )
 
     # Load the environment variables
     load_dotenv(dotenv_path=dotenv_path)
@@ -23,7 +27,6 @@ def omero_connect(func):
     host = os.getenv("HOST")
     project_id = os.getenv("PROJECT_ID")
     viewer_data.project_id = project_id
-    print(username, password, host)
 
     @functools.wraps(func)
     def wrapper_omero_connect(*args, **kwargs):
