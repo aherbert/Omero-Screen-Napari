@@ -1,6 +1,11 @@
 """
-This module handles the widget to call Omero and load well images
+This module handles the widget to call Omero and load flatfield corrected well images as well as segmentation masks (if avaliable) into napari.
+The plugin can be run from napari as Welldata Widget under Plugins.
 """
+
+
+# Logging
+import logging
 import re
 import tempfile
 from typing import Optional
@@ -11,85 +16,101 @@ import omero
 import pandas as pd
 from ezomero import get_image
 from magicgui import magic_factory
-from omero.gateway import FileAnnotationWrapper
+from napari.viewer import Viewer
+from omero.gateway import BlitzGateway, FileAnnotationWrapper
 from qtpy.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
 from skimage import exposure
 from tqdm import tqdm
 
+from omero_screen_napari.custom_logging import setup_logging
 from omero_screen_napari.omero_utils import omero_connect
 from omero_screen_napari.viewer_data_module import viewer_data
+
+# Looging
+setup_logging()
+logger = logging.getLogger("omero_screen_napari")
+logger.setLevel(logging.DEBUG)
 
 # Global variable to keep track of the existing metadata widget
 metadata_widget: Optional[QWidget] = None
 
+# Widget to call Omero and load well images
+
 
 @magic_factory(call_button="Enter")
 def welldata_widget(
-    viewer: "napari.viewer.Viewer",
+    viewer: Viewer,
     plate_id: str = "Plate ID",
     well_pos: str = "Well Position",
     images: str = "All",
     image_id: int = 0,
-):
+) -> None:
+    """
+    This function is a widget for handling well data in a napari viewer. It retrieves data based on the provided
+    plate ID and well position, and then adds the images to the viewer. It also handles metadata, sets color maps,
+    and adds label layers to the viewer.
+
+    Parameters:
+    viewer (Viewer): The napari viewer where the images will be displayed.
+    plate_id (str): The ID of the plate. Default is "Plate ID".
+    well_pos (str): The position of the well. Default is "Well Position".
+    images (str): The images to be displayed. Default is "All".
+    image_id (int): The ID of the image. Default is 0.
+
+    Returns:
+    None
+    """
     global metadata_widget
-    # Clear all layers from the viewer
+
+    clear_viewer_layers(viewer)
+    retrieve_data(plate_id, well_pos, images)
+    add_image_to_viewer(viewer)
+    handle_metadata_widget(viewer)
+    set_color_maps(viewer)
+    add_label_layers(viewer)
+
+
+# accessory functions for _welldata_widget
+
+
+def clear_viewer_layers(viewer: Viewer) -> None:
     viewer.layers.select_all()
     viewer.layers.remove_selected()
 
-    # Get the data from Omero
-    _get_data(plate_id, well_pos, images)
-    channel_names = {
-        key: int(value) for key, value in viewer_data.channel_data.items()
-    }
 
+def add_image_to_viewer(viewer: Viewer) -> None:
     viewer.add_image(viewer_data.images, channel_axis=-1)
-    # Remove existing metadata widget if it exists
+
+
+def handle_metadata_widget(viewer: Viewer) -> None:
+    global metadata_widget
     if metadata_widget is not None:
         viewer.window.remove_dock_widget(metadata_widget)
-
     metadata_widget = MetadataWidget(viewer_data.metadata)
     viewer.window.add_dock_widget(metadata_widget)
 
-    # Dictionary of color maps
-    color_maps = _generate_color_map(channel_names)
 
-    # Setting the names and color maps of the layers
+def set_color_maps(viewer: Viewer) -> None:
+    channel_names: dict = {
+        key: int(value) for key, value in viewer_data.channel_data.items()
+    }
+    color_maps: dict[str, str] = _generate_color_map(channel_names)
     for name, index in channel_names.items():
         layer = viewer.layers[index]
         layer.name = name
         layer.colormap = color_maps[name]
-        # # Calculate 1st and 99th percentiles for the contrast limits
-        # lower_limit = np.percentile(layer.data, 0.1)
-        # upper_limit = np.percentile(layer.data, 99.9)
-        # layer.contrast_limits = (lower_limit, upper_limit)
 
+
+def add_label_layers(viewer: Viewer) -> None:
     if len(viewer_data.labels.shape) == 3:
         viewer.add_labels(viewer_data.labels.astype(int), name="Nuclei Masks")
-    # TODO add exception for when there are no labels
     elif viewer_data.labels.shape[3] == 2:
-        # Split the last dimension to get two arrays of shape (3, 1020, 1020)
         channel_1_masks = viewer_data.labels[..., 0].astype(int)
         channel_2_masks = viewer_data.labels[..., 1].astype(int)
-
-        # Add these to the viewer as Labels layers
         viewer.add_labels(channel_1_masks, name="Nuclei Masks")
         viewer.add_labels(channel_2_masks, name="Cell Masks")
     else:
         raise ValueError("Invalid segmentation label shape")
-
-
-class MetadataWidget(QWidget):
-    def __init__(self, metadata):
-        super().__init__()
-        self.layout = QVBoxLayout()
-
-        self.label = QLabel()
-        self.label.setText(
-            "\n".join(f"{key}: {value}" for key, value in metadata.items()),
-        )
-
-        self.layout.addWidget(self.label)
-        self.setLayout(self.layout)
 
 
 def _generate_color_map(channel_names: dict) -> dict[str, str]:
@@ -130,11 +151,45 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
     return color_map_dict
 
 
-## backend handling the omero connection and adding data to viwer_data
+# Add small widget for metadata to get info pn cell line and condition
+class MetadataWidget(QWidget):
+    """
+    A custom QWidget that displays metadata in a QLabel. The metadata is displayed as key-value pairs.
+
+    Inherits from:
+    QWidget: Base class for all user interface objects in PyQt5.
+
+    Attributes:
+    layout (QVBoxLayout): Layout for the widget.
+    label (QLabel): Label where the metadata is displayed.
+
+    Args:
+    metadata (dict): The metadata to be displayed. It should be a dictionary where the keys are the metadata fields and the values are the metadata values.
+    """
+
+    def __init__(self, metadata):
+        super().__init__()
+        self.layout = QVBoxLayout()
+
+        self.label = QLabel()
+        self.label.setText(
+            "\n".join(f"{key}: {value}" for key, value in metadata.items()),
+        )
+
+        self.layout.addWidget(self.label)
+        self.setLayout(self.layout)
+
+
+# backend handling the omero connection and adding data to viwer_data
 
 
 @omero_connect
-def _get_data(plate_id: str, well_pos: str, images: str, conn=None):
+def retrieve_data(
+    plate_id: str,
+    well_pos: str,
+    images: str,
+    conn: Optional[BlitzGateway] = None,
+) -> None:
     """
     Get data from Omero and add it to the viewer_data dataclass object
     :param plate_id: number of the omero screen plate
@@ -151,7 +206,7 @@ def _get_data(plate_id: str, well_pos: str, images: str, conn=None):
         _get_segmentation_masks(conn)
 
     except Exception as e:
-        print(f"b {e}")
+        logging.exception("The following error occurred:")  # noqa: G004
         # Show a message box with the error message
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
@@ -162,9 +217,22 @@ def _get_data(plate_id: str, well_pos: str, images: str, conn=None):
 
 
 # plate and channel_data
-def _get_omero_objects(conn, plate_id: str, well_pos: str):
+def _get_omero_objects(
+    conn: BlitzGateway, plate_id: str, well_pos: str
+) -> None:
     """
-    Get plate data from Omero
+    Get plate data from Omero.
+
+    Args:
+        conn: The Omero connection object.
+        plate_id: The ID of the plate.
+        well_pos: The position of the well.
+
+    Raises:
+        ValueError: If the plate or well does not exist.
+
+    Returns:
+        None.
     """
     # get plate object
     viewer_data.plate_id = int(plate_id)
@@ -301,7 +369,12 @@ def _get_images(images, conn):
     viewer_data.image_ids = image_ids
 
 
-def _process_omero_image(index, flatfield_array, conn):
+def _process_omero_image(
+    index: int, flatfield_array: np.array, conn: BlitzGateway
+) -> tuple[int, np.array]:
+    """
+    Process an Omero image by applying flatfield correction and scaling.
+    """
     image, image_array = get_image(
         conn, viewer_data.well.getImage(index).getId()
     )
@@ -375,29 +448,29 @@ def _get_segmentation_masks(conn):
 
 if __name__ == "__main__":
 
-    @omero_connect
-    def show_image(image_id, conn=None):
-        image, image_array = get_image(conn, image_id)
+    def test_welldata_widget_interactively():
+        # Start Napari
+
         viewer = napari.Viewer()
-        viewer.add_image(image_array.squeeze(), channel_axis=-1)
-        print(image_array.squeeze().shape)
+
+        # Initialize the welldata_widget and add it to the viewer
+        widget = welldata_widget()
+        viewer.window.add_dock_widget(widget)
+
+        # Set default test parameters for convenience
+        test_plate_id = 1237
+        test_well_position = "B7"
+        test_images = 0
+
+        # Pre-fill the widget with default test values
+        widget.plate_id.value = test_plate_id
+        widget.well_pos.value = test_well_position
+        widget.images.value = test_images
+
+        # Programmatically simulate the 'Enter' button click
+        widget()
+
+        # Keep the Napari viewer open for manual inspection
         napari.run()
 
-    show_image(571808)
-    # plate_id = "1421"
-    # well_pos = "B2"
-    # image = "0"
-    # print(viewer_data.channel_data)
-    #
-    # _get_data(plate_id, well_pos, image)
-    # print(viewer_data.channel_data)
-    # channel_names = {
-    #     key: int(value) for key, value in viewer_data.channel_data.items()
-    # }
-    # print(channel_names)
-    # color_maps = _generate_color_map(channel_names)
-    # print(color_maps)
-    # print(viewer_data.metadata)
-    # print(viewer_data.images.shape)
-    # print(viewer_data.labels.shape)
-    # print(viewer_data.image_ids)
+    test_welldata_widget_interactively()

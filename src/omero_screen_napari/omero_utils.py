@@ -6,20 +6,25 @@ from omero_screen_napari.viewer_data_module import viewer_data
 from dotenv import load_dotenv
 
 
-
 def omero_connect(func):
     """
     decorator to log in and generate omero connection
     :param func: function to be decorated
     :return: wrapper function: passes conn to function and closes it after execution
     """
-    load_dotenv()
+    # Check if the environment variable is set
+    dotenv_path = ".localenv" if os.getenv("USE_LOCAL_ENV") == "1" else ".env"
+
+    # Load the environment variables
+    load_dotenv(dotenv_path=dotenv_path)
+
     username = os.getenv("USERNAME")
     password = os.getenv("PASSWORD")
     host = os.getenv("HOST")
     project_id = os.getenv("PROJECT_ID")
     viewer_data.project_id = project_id
     print(username, password, host)
+
     @functools.wraps(func)
     def wrapper_omero_connect(*args, **kwargs):
         try:

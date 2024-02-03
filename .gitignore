@@ -85,3 +85,5 @@ venv/
 **/_version.py
 
 secrets
+.env
+.localenv
