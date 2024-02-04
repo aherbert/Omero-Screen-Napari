@@ -107,6 +107,7 @@ def select_channels(channels: list[str]) -> np.ndarray:
     order_indices = [channel_data[channel] for channel in channels]
     return viewer_data.images[..., order_indices]
 
+
 # prepare the images for plotting
 def generate_crops(image_data, segmentation, cellcycle, crop_size):
     """
@@ -280,7 +281,9 @@ def choose_random_images(
 
     return chosen_cells, chosen_labels
 
+
 # Plot the gallery
+
 
 def prepare_images(
     chosen_cells: List[np.array],
@@ -381,8 +384,14 @@ def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size):
         ax.imshow(gallery_image[..., 0], cmap="gray_r")
     else:
         ax.imshow(gallery_image)
+    metadata_str = ", ".join(
+        [f"{key}: {value}" for key, value in viewer_data.metadata.items()]
+    )
+    channel_list = [channel for channel in channels if channel != ""]
     ax.set_title(
-        f"{viewer_data.plate_name}, Cell Line: {viewer_data.metadata['cell_line']}, Channels: {', '.join(channels)}, Cellcycle Phase: {cellcycle}"
+        f"{viewer_data.plate_name}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle Phase: {cellcycle}",
+        fontsize=12,
+        fontweight="bold",
     )
     plt.axis("off")
     # Add scale bar
@@ -408,6 +417,7 @@ def plot_random_gallery(
         prepared_cells, n_row, n_col, padding_height, padding_width
     )
     plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size)
+
 
 def draw_contours(img, label):
     channel_num = img.shape[-1]
