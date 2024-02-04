@@ -2,12 +2,10 @@
 import os
 
 os.environ["USE_LOCAL_ENV"] = "1"
-print(
-    f'environment_var = {os.environ.get("USE_LOCAL_ENV")}'
-)  # This should print "1"
-import napari
 
-from omero_screen_napari._welldata_widget import welldata_widget
+import napari  # noqa: E402
+
+from omero_screen_napari._welldata_widget import welldata_widget  # noqa: E402
 
 
 def test_welldata_widget_interactively():

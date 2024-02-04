@@ -1,9 +1,10 @@
 import functools
-from omero.gateway import BlitzGateway
 import os
-from pathlib import Path
-from omero_screen_napari.viewer_data_module import viewer_data
+
 from dotenv import load_dotenv
+from omero.gateway import BlitzGateway
+
+from omero_screen_napari.viewer_data_module import viewer_data
 
 
 def omero_connect(func):
@@ -32,7 +33,7 @@ def omero_connect(func):
     def wrapper_omero_connect(*args, **kwargs):
         try:
             conn = BlitzGateway(username, password, host=host)
-        except IOError:
+        except OSError:
             print("could not get login data")
         value = None
         try:

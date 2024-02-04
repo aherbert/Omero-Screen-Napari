@@ -1,19 +1,24 @@
 import random
+from typing import List, Tuple
 
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 from magicgui import magic_factory
 from magicgui.widgets import Container
 from qtpy.QtWidgets import QMessageBox
-from skimage.measure import regionprops, label, find_contours
+from skimage.measure import find_contours, label, regionprops
 
-from omero_screen_napari.viewer_data_module import viewer_data, cropped_images
+from omero_screen_napari.viewer_data_module import cropped_images, viewer_data
+
 
 def gallery_gui_widget():
     # Call the magic factories to get the widget instances
     gallery_widget_instance = gallery_widget()
     reset_widget_instance = reset_widget()
     return Container(widgets=[gallery_widget_instance, reset_widget_instance])
+
+
 @magic_factory(
     call_button="Enter",
 )
@@ -45,12 +50,26 @@ def gallery_widget(
     channels = [red_channel, green_channel, blue_channel]
 
     show_gallery(
-        channels, segmentation, replacement, crop_size, rows, columns, contour, cellcycle
+        channels,
+        segmentation,
+        replacement,
+        crop_size,
+        rows,
+        columns,
+        contour,
+        cellcycle,
     )
 
 
 def show_gallery(
-    channels, segmentation, replacement, crop_size, rows, columns, contour, cellcycle
+    channels,
+    segmentation,
+    replacement,
+    crop_size,
+    rows,
+    columns,
+    contour,
+    cellcycle,
 ):
     filtered_channels = list(filter(None, channels))
 
@@ -65,10 +84,8 @@ def show_gallery(
             contour=contour,
             n_row=rows,
             n_col=columns,
-            padding=5,
         )
-    except Exception as e:
-
+    except Exception as e:  # noqa: BLE001
         # Show a message box with the error message
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
@@ -90,7 +107,7 @@ def select_channels(channels: list[str]) -> np.ndarray:
     order_indices = [channel_data[channel] for channel in channels]
     return viewer_data.images[..., order_indices]
 
-
+# prepare the images for plotting
 def generate_crops(image_data, segmentation, cellcycle, crop_size):
     """
     Crop regions around each segmented object in the image.
@@ -120,7 +137,7 @@ def generate_crops(image_data, segmentation, cellcycle, crop_size):
             ]
 
         # Identify unique objects in the segmentation
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             if segmentation == "Nuclei":
                 centroid_row = row["centroid-0"]
                 centroid_col = row["centroid-1"]
@@ -238,78 +255,159 @@ def erase_masks(cropped_label):
     return cropped_label
 
 
-def plot_random_gallery(
-    channels, crop_size, cellcycle, contour=True, n_row=4, n_col=4, padding=5
-):
-    """
-    Plot a gallery of randomly chosen images in n_row x n_col grid with padding between images.
-    """
-    # Randomly choose images
+def choose_random_images(
+    cropped_images: List[np.array], n_row: int, n_col: int
+) -> Tuple[List[np.array]]:
     sample_size = min(n_row * n_col, len(cropped_images.cropped_regions))
     chosen_indices = random.sample(
         range(len(cropped_images.cropped_regions)), sample_size
     )
 
-    # Use the chosen indices to get the corresponding images from both lists
     chosen_cells = [cropped_images.cropped_regions[i] for i in chosen_indices]
-    chosen_cells = [
-        fill_missing_channels(chosen_cell, channels, crop_size)
-        for chosen_cell in chosen_cells
-    ]
     chosen_labels = [cropped_images.cropped_labels[i] for i in chosen_indices]
-    # delete cells, labels that are displayed from cropped images so that they wont appear again
-    cropped_images.cropped_regions = [item for index, item in enumerate(cropped_images.cropped_regions) if
-                                      index not in chosen_indices]
-    print(f"cropped image number: {len(cropped_images.cropped_regions)}")
-    cropped_images.cropped_labels = [item for index, item in enumerate(cropped_images.cropped_labels) if
-                                      index not in chosen_indices]
-    print(f"cropped label number: {len(cropped_images.cropped_labels)}")
-    channel_num = chosen_cells[0].shape[-1]
-    if contour == True:
-        chosen_cells = [
+
+    # Remove displayed cells and labels from cropped images
+    cropped_images.cropped_regions = [
+        item
+        for index, item in enumerate(cropped_images.cropped_regions)
+        if index not in chosen_indices
+    ]
+    cropped_images.cropped_labels = [
+        item
+        for index, item in enumerate(cropped_images.cropped_labels)
+        if index not in chosen_indices
+    ]
+
+    return chosen_cells, chosen_labels
+
+# Plot the gallery
+
+def prepare_images(
+    chosen_cells: List[np.array],
+    chosen_labels: List[np.array],
+    channels: dict[str, int],
+    crop_size: int,
+    contour: bool,
+) -> List[np.array]:
+    prepared_cells = [
+        fill_missing_channels(cell, channels, crop_size)
+        for cell in chosen_cells
+    ]
+    if contour:
+        prepared_cells = [
             draw_contours(cell, label)
-            for cell, label in zip(chosen_cells, chosen_labels)
+            for cell, label in zip(prepared_cells, chosen_labels)
         ]
-    len(chosen_cells)
-    # Get image dimensions from the first image
-    img_height, img_width, img_channels = chosen_cells[0].shape
+    return prepared_cells
 
-    # Create an empty array to hold the gallery image
-    gallery_height = n_row * img_height + (n_row - 1) * padding
-    gallery_width = n_col * img_width + (n_col - 1) * padding
+
+def calculate_dynamic_padding(
+    img_height: int, img_width: int
+) -> Tuple[int, int]:
+    padding_height = int(img_height * 0.01)
+    padding_width = int(img_width * 0.01)
+    return padding_height, padding_width
+
+
+def create_gallery_image(
+    prepared_cells: List[np.array],
+    n_row: int,
+    n_col: int,
+    padding_height: int,
+    padding_width: int,
+) -> np.array:
+    img_height, img_width, img_channels = prepared_cells[0].shape
+    gallery_height = n_row * img_height + (n_row - 1) * padding_height
+    gallery_width = n_col * img_width + (n_col - 1) * padding_width
     gallery_image = np.zeros(
-        (gallery_height, gallery_width, channel_num), dtype=np.float64
-    )  # 3 for RGB channels
+        (gallery_height, gallery_width, img_channels), dtype=np.float64
+    )
 
-    # Populate the gallery image with individual images
-    image_idx = 0
     for row in range(n_row):
         for col in range(n_col):
-            if image_idx >= len(cropped_images.cropped_regions):
+            idx = row * n_col + col
+            if idx >= len(prepared_cells):
                 break
-            start_row = row * (img_height + padding)
+            start_row = row * (img_height + padding_height)
             end_row = start_row + img_height
-            start_col = col * (img_width + padding)
+            start_col = col * (img_width + padding_width)
             end_col = start_col + img_width
             gallery_image[
                 start_row:end_row, start_col:end_col, :
-            ] = chosen_cells[image_idx]
-            image_idx += 1
+            ] = prepared_cells[idx]
 
-    # Plot the gallery image
+    return gallery_image
+
+
+def add_scale_bar(
+    ax, gallery_width: int, gallery_height: int, channels, crop_size
+):
+    physical_scale_bar_length = 10 if crop_size <= 30 else 25  # in microns
+    scale_bar_length_in_pixels = int(
+        physical_scale_bar_length / viewer_data.pixel_size[0]
+    )
+    scale_bar_length_in_pixels = int(
+        physical_scale_bar_length / viewer_data.pixel_size[0]
+    )
+    bar_height = 1
+    start_x = gallery_width - scale_bar_length_in_pixels - 2
+    start_y = gallery_height - bar_height - 2
+    color = "black" if channels.count("") == 2 else "white"
+    scale_bar = patches.Rectangle(
+        (start_x, start_y),
+        scale_bar_length_in_pixels,
+        bar_height,
+        linewidth=1,
+        edgecolor=color,
+        facecolor=color,
+    )
+    ax.add_patch(scale_bar)
+    label_x = start_x + scale_bar_length_in_pixels / 2
+    label_y = start_y - 0.5
+    ax.text(
+        label_x,
+        label_y,
+        f"{physical_scale_bar_length} µm",
+        color=color,
+        ha="center",
+        va="bottom",
+        fontsize=12,
+    )
+
+
+def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size):
     fig, ax = plt.subplots(figsize=(10, 10))
     if channels.count("") == 2:
-        index = next((i for i, s in enumerate(channels) if s != ""), None)
-        ax.imshow(gallery_image[..., index], cmap="gray_r")
+        ax.imshow(gallery_image[..., 0], cmap="gray_r")
     else:
         ax.imshow(gallery_image)
     ax.set_title(
-        f"{viewer_data.plate_name}, {viewer_data.well_name}, {channels}, {cellcycle}"
+        f"{viewer_data.plate_name}, Cell Line: {viewer_data.metadata['cell_line']}, Channels: {', '.join(channels)}, Cellcycle Phase: {cellcycle}"
     )
     plt.axis("off")
-    fig.resolution = 300
+    # Add scale bar
+    gallery_height, gallery_width, _ = gallery_image.shape
+    add_scale_bar(ax, gallery_width, gallery_height, channels, crop_size)
     plt.show(block=False)
 
+
+def plot_random_gallery(
+    channels, crop_size, cellcycle, contour=True, n_row=4, n_col=4
+):
+    chosen_cells, chosen_labels = choose_random_images(
+        cropped_images, n_row, n_col
+    )
+    prepared_cells = prepare_images(
+        chosen_cells, chosen_labels, channels, crop_size, contour
+    )
+    img_height, img_width = prepared_cells[0].shape[:2]
+    padding_height, padding_width = calculate_dynamic_padding(
+        img_height, img_width
+    )
+    gallery_image = create_gallery_image(
+        prepared_cells, n_row, n_col, padding_height, padding_width
+    )
+    plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size)
 
 def draw_contours(img, label):
     channel_num = img.shape[-1]

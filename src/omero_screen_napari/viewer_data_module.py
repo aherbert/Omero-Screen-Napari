@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
-from omero.gateway import _PlateWrapper, _WellWrapper, _DatasetWrapper
+
 import numpy as np
 import pandas as pd
+from omero.gateway import _DatasetWrapper, _PlateWrapper, _WellWrapper
 
 
 @dataclass
