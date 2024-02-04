@@ -1,5 +1,6 @@
 """
-This module handles the widget to call Omero and load flatfield corrected well images as well as segmentation masks (if avaliable) into napari.
+This module handles the widget to call Omero and load flatfield corrected well images
+as well as segmentation masks (if avaliable) into napari.
 The plugin can be run from napari as Welldata Widget under Plugins.
 """
 
@@ -10,7 +11,7 @@ import logging
 import os
 import re
 import tempfile
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import napari
 import numpy as np
@@ -47,19 +48,10 @@ def welldata_widget(
     image_id: int = 0,
 ) -> None:
     """
-    This function is a widget for handling well data in a napari viewer. It retrieves data based on the provided
-    plate ID and well position, and then adds the images to the viewer. It also handles metadata, sets color maps,
-    and adds label layers to the viewer.
-
-    Parameters:
-    viewer (Viewer): The napari viewer where the images will be displayed.
-    plate_id (str): The ID of the plate. Default is "Plate ID".
-    well_pos (str): The position of the well. Default is "Well Position".
-    images (str): The images to be displayed. Default is "All".
-    image_id (int): The ID of the image. Default is 0.
-
-    Returns:
-    None
+    This function is a widget for handling well data in a napari viewer.
+    It retrieves data based on the provided plate ID and well position,
+    and then adds the images and labels to the viewer. It also handles metadata,
+    sets color maps, and adds label layers to the viewer.
     """
     global metadata_widget
 
@@ -172,7 +164,8 @@ class MetadataWidget(QWidget):
     label (QLabel): Label where the metadata is displayed.
 
     Args:
-    metadata (dict): The metadata to be displayed. It should be a dictionary where the keys are the metadata fields and the values are the metadata values.
+    metadata (dict): The metadata to be displayed. It should be a dictionary where the keys are the metadata
+    fields and the values are the metadata values.
     """
 
     def __init__(self, metadata):
@@ -208,7 +201,7 @@ def retrieve_data(
     try:
         _get_omero_objects(conn, plate_id, well_pos)
         _get_channel_data()
-        _get_csv_data()
+        _process_plate_data()
         _get_well_metadata()
         _get_images(images, conn)
         _get_segmentation_masks(conn)
@@ -249,7 +242,7 @@ def _get_omero_objects(
         raise ValueError(f"Plate with ID {plate_id} does not exist")
     viewer_data.plate_name = viewer_data.plate.getName()
     viewer_data.well_name = well_pos
-    pixel_x, pixel_y = get_pixel_size(viewer_data.plate)
+    pixel_x, pixel_y = _get_pixel_size(viewer_data.plate)
     viewer_data.pixel_size = (
         round(pixel_x.getValue(), 1),
         round(pixel_y.getValue(), 1),
@@ -277,7 +270,7 @@ def _get_omero_objects(
         )
 
 
-def get_pixel_size(plate: omero.gateway.PlateWrapper) -> float:
+def _get_pixel_size(plate: omero.gateway.PlateWrapper) -> float:
     """
     Get the pixel size from the plate metadata.
     :param plate: The plate object.
@@ -290,17 +283,31 @@ def get_pixel_size(plate: omero.gateway.PlateWrapper) -> float:
 
 
 def _get_channel_data():
+    """Process channel data to dictionary {channel_name: channel_index}
+    and add it to viewer_data; raise exception if no channel data found."""
     map_ann = _get_map_ann(viewer_data.plate)
     channel_data = dict(map_ann)
+    # convert Hoechst key to DAPI if present
     cleaned_channel_data = {
         key.strip(): value for key, value in channel_data.items()
     }
     if "Hoechst" in cleaned_channel_data:
         cleaned_channel_data["DAPI"] = cleaned_channel_data.pop("Hoechst")
+    #check if one of the channels is DAPI otherwise raise exception
+    if "DAPI" not in cleaned_channel_data:
+        raise ValueError(
+            f"Channel specifications not found for {viewer_data.plate.getName()}."
+        )
+    # add the channel data to viewer_data
     viewer_data.channel_data = cleaned_channel_data
 
 
-def _get_map_ann(omero_object):
+def _get_map_ann(
+    omero_object: omero.gateway.BlitzObjectWrapper,
+) -> List[Tuple[str, str]]:
+    """Get channel information from Omero map annotations
+    or raise exception
+    """
     annotations = omero_object.listAnnotations()
     if not (
         map_annotations := [
@@ -310,58 +317,144 @@ def _get_map_ann(omero_object):
         ]
     ):
         raise ValueError(
-            f"Map annotation not found for {viewer_data.plate.getName()}."
+            f"Channel specifications not found for {viewer_data.plate.getName()}."
         )
+    print(f"mapann is: {map_annotations[0].getValue()}")
     return map_annotations[0].getValue()
 
 
-# metadata organisation
-def _get_csv_data():
-    file_anns = viewer_data.plate.listAnnotations()
-    for ann in file_anns:
-        if isinstance(
-            ann, FileAnnotationWrapper
-        ) and ann.getFile().getName().endswith("final_data.csv"):
-            original_file = ann.getFile()
-            with tempfile.NamedTemporaryFile(
-                suffix=".csv", delete=False
-            ) as tmp:
-                _download_file_to_tmp(original_file, tmp)
-                tmp.flush()  # Ensure all data is written to the temp file
-                data = pd.read_csv(tmp.name, index_col=0)
-                viewer_data.plate_data = data[
-                    data["well"] == viewer_data.well.getWellPos()
-                ]
-                viewer_data.intensities = _get_intensity_values(data)
-                # Register the cleanup function for this temporary file
-                atexit.register(cleanup_temp_file, tmp.name)
+# experimental data retrieval and metadata organisation
 
 
-# TODO write function to get the global scaling values for each channel
+def _get_annotations():
+    try:
+        annotations = list(
+            viewer_data.plate.listAnnotations()
+        )  # Convert generator to a list
+        if not annotations:
+            raise ValueError("No annotations found for the plate.")
+        return annotations
+    except ValueError as e:
+        logger.warning(str(e))
+        raise
+
+
+def _find_relevant_files(annotations):
+    relevant_files = [
+        ann for ann in annotations if isinstance(ann, FileAnnotationWrapper)
+    ]
+    if not relevant_files:
+        raise ValueError(
+            "No final analysis CSV data found for the current plate."
+        )
+    return relevant_files
+
+
+def _select_csv_file(relevant_files):
+    relevant_files.sort(
+        key=lambda x: (
+            x.getFile().getName().endswith("final_data.csv"),
+            not x.getFile().getName().endswith("final_data_cc.csv"),
+        )
+    )
+    original_file = relevant_files[0].getFile()
+    file_name = original_file.getName()
+    if file_name.endswith("final_data_cc.csv"):
+        logger.info(
+            "Found CSV data with cell cycle annotation for the current plate."
+        )
+    elif file_name.endswith("final_data.csv"):
+        logger.info(
+            "Found CSV data without cell cycle annotation for the current plate."
+        )
+    else:
+        raise ValueError(
+            "No final analysis CSV data found for the current plate."
+        )
+    return original_file
+
+
+def _download_and_process_csv(original_file):
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        _download_file_to_tmp(original_file, tmp)
+        tmp.flush()  # Ensure all data is written to the temp file
+        try:
+            data = pd.read_csv(tmp.name, index_col=0)
+            _process_data(data)
+        except pd.errors.EmptyDataError:
+            logger.error("CSV file is empty or all data is NA")
+        except pd.errors.ParserError:
+            logger.error("Error parsing CSV file")
+        except Exception as e:  # Catch-all for unexpected exceptions
+            logger.error("Unexpected error processing 'final_data.csv': %s", e)
+            raise  # Raise exception after logging for further handling up the stack
+        atexit.register(_cleanup_temp_file, tmp.name)
+
+
+def _process_data(data):
+    filtered_data = data[data["well"] == viewer_data.well.getWellPos()]
+    if filtered_data.empty:
+        logger.warning(
+            "No data found for well %s in 'final_data.csv'",
+            viewer_data.well.getWellPos(),
+        )
+    else:
+        viewer_data.plate_data = filtered_data
+        viewer_data.intensities = _get_intensity_values(data)
+        logger.info("'final_data.csv' processed successfully")
+
+
+def _process_plate_data():
+    try:
+        annotations = _get_annotations()
+        relevant_files = _find_relevant_files(annotations)
+        original_file = _select_csv_file(relevant_files)
+        _download_and_process_csv(original_file)
+    except ValueError as e:
+        logger.error(str(e))
+        raise
+
+
 def _get_intensity_values(df: pd.DataFrame) -> dict[str, Tuple]:
     intensity_dict = {}
     for key, value in viewer_data.channel_data.items():
-        print(key, value)
-        max_value = int(df[f"intensity_max_{key}_nucleus"].max())
+        max_value = int(df[f"intensity_max_{key}_nucleus"].mean())
         min_value = int(df[f"intensity_min_{key}_nucleus"].min())
         intensity_dict[int(value)] = (min_value, max_value)
     return intensity_dict
 
 
 def _download_file_to_tmp(original_file, tmp):
-    with open(tmp.name, "wb") as f:
-        for chunk in original_file.asFileObj():
-            f.write(chunk)
+    try:
+        with open(tmp.name, "wb") as f:
+            for chunk in original_file.asFileObj():
+                f.write(chunk)
+            logger.info("Successfully downloaded file to %s", tmp.name)
+    except OSError as e:
+        logger.error("OS error while downloading file to %s: %s", tmp.name, e)
+    except Exception as e:  # For custom or unexpected exceptions
+        logger.error("Error downloading file to %s: %s", tmp.name, e)
+        raise e
 
 
-def cleanup_temp_file(filepath):
+def _cleanup_temp_file(filepath):
     try:
         os.remove(filepath)
-        logger.info(f"Deleted temporary file: {filepath}")
-    except Exception as e:
-        logger.error(f"Error deleting temporary file: {e}")
+        logger.info("Deleted temporary file: %s", filepath)
+    except FileNotFoundError:
+        logger.warning("Temporary file not found: %s", filepath)
+    except PermissionError:
+        logger.error(
+            "Permission denied when deleting temporary file: %s", filepath
+        )
+    except IsADirectoryError:
+        logger.error("Expected a file but found a directory: %s", filepath)
+    except OSError as e:
+        logger.error(
+            "Error deleting temporary file: %s. Error: %s", filepath, e
+        )
 
-
+#TODO this function needs to check if the well mapp ann is actually the right data
 def _get_well_metadata():
     map_ann = None
     for ann in viewer_data.well.listAnnotations():
