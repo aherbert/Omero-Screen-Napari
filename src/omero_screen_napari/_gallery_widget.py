@@ -389,7 +389,7 @@ def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size):
     )
     channel_list = [channel for channel in channels if channel != ""]
     ax.set_title(
-        f"{viewer_data.plate_name}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle Phase: {cellcycle}",
+        f"{viewer_data.plate_name}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle phase: {cellcycle}",
         fontsize=12,
         fontweight="bold",
     )
