@@ -286,8 +286,8 @@ def choose_random_images(
         for index, item in enumerate(cropped_images.cropped_labels)
         if index not in chosen_indices
     ]
-
-    return chosen_cells, chosen_labels
+    masked_chosen_cells = apply_mask_to_images(chosen_cells, chosen_labels)
+    return masked_chosen_cells, chosen_labels
 
 def check_identical_arrays(arr_list):
     # Check each array with every other array in the list
@@ -297,6 +297,28 @@ def check_identical_arrays(arr_list):
             if np.array_equal(arr_list[i], arr_list[j]):
                 return True  # Found identical arrays
     return False  # No identical arrays found
+
+def apply_mask_to_images(images, masks):
+    """
+    Nullify pixels in color images that don't overlap with the corresponding masks.
+    Images are expected to be in the shape of (H, W, 3) and masks in the shape of (H, W).
+
+    :param images: List of numpy arrays, each representing a color image (H, W, 3).
+    :param masks: List of numpy arrays, each representing a mask (H, W).
+    :return: List of numpy arrays, images after applying masks.
+    """
+    masked_images = []
+
+    for image, mask in zip(images, masks):
+        # Ensure the mask is expanded to match the image's 3 channels
+        expanded_mask = np.repeat(mask[:, :, np.newaxis], 3, axis=2) > 0
+        # Apply the expanded mask to the image
+        masked_image = np.where(expanded_mask, image, 0)
+        masked_images.append(masked_image)
+
+    return masked_images
+
+
 
 # Plot the gallery
 
