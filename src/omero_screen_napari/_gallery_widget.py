@@ -287,6 +287,7 @@ def choose_random_images(
         if index not in chosen_indices
     ]
     masked_chosen_cells = apply_mask_to_images(chosen_cells, chosen_labels)
+    
     return masked_chosen_cells, chosen_labels
 
 def check_identical_arrays(arr_list):
@@ -345,8 +346,8 @@ def prepare_images(
 def calculate_dynamic_padding(
     img_height: int, img_width: int
 ) -> Tuple[int, int]:
-    padding_height = int(img_height * 0.01)
-    padding_width = int(img_width * 0.01)
+    padding_height = int(img_height * 0.02)
+    padding_width = int(img_width * 0.02)
     return padding_height, padding_width
 
 
@@ -358,10 +359,15 @@ def create_gallery_image(
     padding_width: int,
 ) -> np.array:
     img_height, img_width, img_channels = prepared_cells[0].shape
-    gallery_height = n_row * img_height + (n_row - 1) * padding_height
-    gallery_width = n_col * img_width + (n_col - 1) * padding_width
-    gallery_image = np.zeros(
-        (gallery_height, gallery_width, img_channels), dtype=np.float64
+    print(f"image datatype: {prepared_cells[0].dtype}")
+
+    # Adjust gallery dimensions to include border padding
+    gallery_height = n_row * img_height + (n_row + 1) * padding_height
+    gallery_width = n_col * img_width + (n_col + 1) * padding_width
+
+    # Create an array filled with 1.0 (white background)
+    gallery_image = np.full(
+        (gallery_height, gallery_width, img_channels), fill_value=1.0, dtype=np.float64
     )
 
     for row in range(n_row):
@@ -369,13 +375,12 @@ def create_gallery_image(
             idx = row * n_col + col
             if idx >= len(prepared_cells):
                 break
-            start_row = row * (img_height + padding_height)
+            # Adjust start positions to account for the border padding
+            start_row = row * (img_height + padding_height) + padding_height
             end_row = start_row + img_height
-            start_col = col * (img_width + padding_width)
+            start_col = col * (img_width + padding_width) + padding_width
             end_col = start_col + img_width
-            gallery_image[
-                start_row:end_row, start_col:end_col, :
-            ] = prepared_cells[idx]
+            gallery_image[start_row:end_row, start_col:end_col, :] = prepared_cells[idx]
 
     return gallery_image
 
@@ -391,8 +396,8 @@ def add_scale_bar(
         physical_scale_bar_length / viewer_data.pixel_size[0]
     )
     bar_height = 1
-    start_x = gallery_width - scale_bar_length_in_pixels - 2
-    start_y = gallery_height - bar_height - 2
+    start_x = gallery_width - scale_bar_length_in_pixels - gallery_width * 0.02
+    start_y = gallery_height - bar_height - gallery_width * 0.02
     color = "black" if channels.count("") == 2 else "white"
     scale_bar = patches.Rectangle(
         (start_x, start_y),
