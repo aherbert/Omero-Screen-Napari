@@ -1,11 +1,14 @@
 import functools
+import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from omero.gateway import BlitzGateway
 
 from omero_screen_napari.viewer_data_module import viewer_data
 
+logging.basicConfig(level=logging.INFO)
 
 def omero_connect(func):
     """
@@ -13,11 +16,13 @@ def omero_connect(func):
     :param func: function to be decorated
     :return: wrapper function: passes conn to function and closes it after execution
     """
-    print(f'omero environment_var = {os.environ.get("USE_LOCAL_ENV")}')
+    logging.debug('omero environment_var = %s', os.environ.get("USE_LOCAL_ENV"))
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    localenv_path = Path(__file__).resolve().parent.parent / ".localenv"
+
+    logging.debug('.env_path = %s', env_path)
     dotenv_path = (
-        "/Users/hh65/Documents/Current_Coding/Omero-Screen-Napari/omero-screen-napari/src/.localenv"
-        if os.getenv("USE_LOCAL_ENV") == "1"
-        else ".env"
+        localenv_path if os.getenv("USE_LOCAL_ENV") == "1" else env_path
     )
 
     # Load the environment variables

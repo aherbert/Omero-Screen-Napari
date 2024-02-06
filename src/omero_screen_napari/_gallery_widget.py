@@ -1,6 +1,6 @@
 import random
 from typing import List, Tuple
-
+import logging
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,6 +12,7 @@ from skimage.measure import find_contours, label, regionprops
 from omero_screen_napari.viewer_data_module import cropped_images, viewer_data
 
 
+logger = logging.getLogger("omero-screen-napari")
 def gallery_gui_widget():
     # Call the magic factories to get the widget instances
     gallery_widget_instance = gallery_widget()
@@ -267,6 +268,13 @@ def choose_random_images(
     chosen_cells = [cropped_images.cropped_regions[i] for i in chosen_indices]
     chosen_labels = [cropped_images.cropped_labels[i] for i in chosen_indices]
 
+    # check for identical arrays
+    if check_identical_arrays(chosen_cells):
+        raise ValueError(
+            "There are identical arrays in the chosen cells. Please try again."
+        )
+    else:
+        print("No identical arrays found.")
     # Remove displayed cells and labels from cropped images
     cropped_images.cropped_regions = [
         item
@@ -281,6 +289,14 @@ def choose_random_images(
 
     return chosen_cells, chosen_labels
 
+def check_identical_arrays(arr_list):
+    # Check each array with every other array in the list
+    n = len(arr_list)
+    for i in range(n):
+        for j in range(i+1, n):  # Start from i+1 to avoid comparing the same array
+            if np.array_equal(arr_list[i], arr_list[j]):
+                return True  # Found identical arrays
+    return False  # No identical arrays found
 
 # Plot the gallery
 
