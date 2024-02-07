@@ -13,6 +13,8 @@ from omero_screen_napari.viewer_data_module import cropped_images, viewer_data
 
 
 logger = logging.getLogger("omero-screen-napari")
+
+
 def gallery_gui_widget():
     # Call the magic factories to get the widget instances
     gallery_widget_instance = gallery_widget()
@@ -48,7 +50,7 @@ def gallery_widget(
     green_channel: str = "Tub",
     red_channel: str = "EdU",
 ):
-    channels = [red_channel, green_channel, blue_channel]
+    channels = [red_channel, green_channel, blue_channel]  # to match rgb order
 
     show_gallery(
         channels,
@@ -71,41 +73,50 @@ def show_gallery(
     columns,
     contour,
     cellcycle,
+    block=False
 ):
     filtered_channels = list(filter(None, channels))
-
+    print(f"filtered channels: {filtered_channels}")
     try:
         images = select_channels(filtered_channels)
         if replacement == "With" or cropped_images.cropped_regions == []:
             generate_crops(images, segmentation, cellcycle, crop_size)
-        plot_random_gallery(
+        return plot_random_gallery(
             channels,
             crop_size,
             cellcycle,
+            block,
             contour=contour,
             n_row=rows,
-            n_col=columns,
+            n_col=columns
         )
     except Exception as e:  # noqa: BLE001
+        print(e)
         # Show a message box with the error message
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(str(e))
-        msg_box.setWindowTitle("Error")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+        # msg_box = QMessageBox()
+        # msg_box.setIcon(QMessageBox.Warning)
+        # msg_box.setText(str(e))
+        # msg_box.setWindowTitle("Error")
+        # msg_box.setStandardButtons(QMessageBox.Ok)
+        # msg_box.exec_()
 
 
 def select_channels(channels: list[str]) -> np.ndarray:
     """
     Selects the channels to be used for the gallery.
     """
-
+    print(f"input channels: {channels}")
     channel_data = {k: int(v) for k, v in viewer_data.channel_data.items()}
+    print(f"channel data: {channel_data}")
+    print(f"channels_dicts: {viewer_data.channel_data}")
     assert all(
         item in channel_data for item in channels
     ), "Selected channels not in data"
     order_indices = [channel_data[channel] for channel in channels]
+    print(f"order indices: {order_indices}")
+    print(
+        f"after channel selection{viewer_data.images[..., order_indices].shape}"
+    )
     return viewer_data.images[..., order_indices]
 
 
@@ -166,8 +177,29 @@ def generate_crops(image_data, segmentation, cellcycle, crop_size):
             # Add cropped region and label to lists
             cropped_regions.append(cropped_region)
             cropped_labels.append(corrected_cropped_label)
-    cropped_images.cropped_regions = cropped_regions
-    cropped_images.cropped_labels = cropped_labels
+
+    (
+        filtered_cropped_regions,
+        filtered_cropped_labels,
+    ) = filter_and_update_cropped_images(cropped_regions, cropped_labels)
+    cropped_images.cropped_regions = filtered_cropped_regions
+    cropped_images.cropped_labels = filtered_cropped_labels
+
+
+def filter_and_update_cropped_images(cropped_regions, cropped_labels):
+    """
+    Filters out cropped regions and labels where the label is effectively empty
+    and updates the global storage with the filtered lists.
+    """
+    filtered_cropped_regions = []
+    filtered_cropped_labels = []
+
+    # Iterate over cropped labels and corresponding regions
+    for region, label in zip(cropped_regions, cropped_labels):
+        if np.any(label):  # Check if there's any mask data in the label
+            filtered_cropped_regions.append(region)
+            filtered_cropped_labels.append(label)
+    return filtered_cropped_regions, filtered_cropped_labels
 
 
 def crop_region(
@@ -274,7 +306,7 @@ def choose_random_images(
             "There are identical arrays in the chosen cells. Please try again."
         )
     else:
-        print("No identical arrays found.")
+        logger.debug("No identical arrays found in the chosen cells.")
     # Remove displayed cells and labels from cropped images
     cropped_images.cropped_regions = [
         item
@@ -287,17 +319,21 @@ def choose_random_images(
         if index not in chosen_indices
     ]
     masked_chosen_cells = apply_mask_to_images(chosen_cells, chosen_labels)
-    
+
     return masked_chosen_cells, chosen_labels
+
 
 def check_identical_arrays(arr_list):
     # Check each array with every other array in the list
     n = len(arr_list)
     for i in range(n):
-        for j in range(i+1, n):  # Start from i+1 to avoid comparing the same array
+        for j in range(
+            i + 1, n
+        ):  # Start from i+1 to avoid comparing the same array
             if np.array_equal(arr_list[i], arr_list[j]):
                 return True  # Found identical arrays
     return False  # No identical arrays found
+
 
 def apply_mask_to_images(images, masks):
     """
@@ -312,13 +348,14 @@ def apply_mask_to_images(images, masks):
 
     for image, mask in zip(images, masks):
         # Ensure the mask is expanded to match the image's 3 channels
-        expanded_mask = np.repeat(mask[:, :, np.newaxis], 3, axis=2) > 0
+        expanded_mask = (
+            np.repeat(mask[:, :, np.newaxis], image.shape[2], axis=2) > 0
+        )
         # Apply the expanded mask to the image
         masked_image = np.where(expanded_mask, image, 0)
         masked_images.append(masked_image)
 
     return masked_images
-
 
 
 # Plot the gallery
@@ -367,7 +404,9 @@ def create_gallery_image(
 
     # Create an array filled with 1.0 (white background)
     gallery_image = np.full(
-        (gallery_height, gallery_width, img_channels), fill_value=1.0, dtype=np.float64
+        (gallery_height, gallery_width, img_channels),
+        fill_value=1.0,
+        dtype=np.float64,
     )
 
     for row in range(n_row):
@@ -380,7 +419,9 @@ def create_gallery_image(
             end_row = start_row + img_height
             start_col = col * (img_width + padding_width) + padding_width
             end_col = start_col + img_width
-            gallery_image[start_row:end_row, start_col:end_col, :] = prepared_cells[idx]
+            gallery_image[
+                start_row:end_row, start_col:end_col, :
+            ] = prepared_cells[idx]
 
     return gallery_image
 
@@ -396,8 +437,8 @@ def add_scale_bar(
         physical_scale_bar_length / viewer_data.pixel_size[0]
     )
     bar_height = 1
-    start_x = gallery_width - scale_bar_length_in_pixels - gallery_width * 0.02
-    start_y = gallery_height - bar_height - gallery_width * 0.02
+    start_x = gallery_width - scale_bar_length_in_pixels - gallery_width * 0.04
+    start_y = gallery_height - bar_height - gallery_width * 0.01
     color = "black" if channels.count("") == 2 else "white"
     scale_bar = patches.Rectangle(
         (start_x, start_y),
@@ -421,7 +462,7 @@ def add_scale_bar(
     )
 
 
-def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size):
+def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size, block):
     fig, ax = plt.subplots(figsize=(10, 10))
     if channels.count("") == 2:
         ax.imshow(gallery_image[..., 0], cmap="gray_r")
@@ -432,7 +473,7 @@ def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size):
     )
     channel_list = [channel for channel in channels if channel != ""]
     ax.set_title(
-        f"{viewer_data.plate_name}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle phase: {cellcycle}",
+        f"{viewer_data.plate_name}, well: {viewer_data.well_name}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle phase: {cellcycle}",
         fontsize=12,
         fontweight="bold",
     )
@@ -440,11 +481,13 @@ def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size):
     # Add scale bar
     gallery_height, gallery_width, _ = gallery_image.shape
     add_scale_bar(ax, gallery_width, gallery_height, channels, crop_size)
-    plt.show(block=False)
+    print("plotting gallery")
+    plt.show(block=block)
+    return fig
 
 
 def plot_random_gallery(
-    channels, crop_size, cellcycle, contour=True, n_row=4, n_col=4
+    channels, crop_size, cellcycle, block, contour=True, n_row=4, n_col=4, 
 ):
     chosen_cells, chosen_labels = choose_random_images(
         cropped_images, n_row, n_col
@@ -459,7 +502,7 @@ def plot_random_gallery(
     gallery_image = create_gallery_image(
         prepared_cells, n_row, n_col, padding_height, padding_width
     )
-    plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size)
+    return plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size, block)
 
 
 def draw_contours(img, label):
@@ -473,13 +516,30 @@ def draw_contours(img, label):
 
 
 def fill_missing_channels(img, channels, crop_size):
-    empty_image = np.zeros((crop_size, crop_size), dtype=np.int8)
-    i = 0
-    img_list = []
-    for channel in channels:
-        if channel != "":
-            img_list.append(img[..., i])
-            i += 1
-        else:
-            img_list.append(empty_image)
-    return np.stack(img_list, axis=-1)
+    logger.debug(f"filling missing channels: {channels}")
+    logger.debug(f"image shape: {img.shape}")
+
+    # Initialize an empty list to hold the channel arrays
+    result_img = []
+    empty_image = np.zeros((img.shape[0], img.shape[1]), dtype=img.dtype)
+
+    # Count the number of non-empty channels
+    num_non_empty = len([ch for ch in channels if ch != ""])
+
+    if num_non_empty == 1:
+        # If there's only one non-empty channel, ensure it's placed at the front
+        result_img = [img[..., 0], empty_image, empty_image]
+    else:
+        # For all other cases, adhere to the order, inserting np.zeros where needed
+        img_channel_index = (
+            0  # Keep track of the index for non-empty channels in img
+        )
+        for channel in channels:
+            if channel:
+                # Append the channel data from img according to its current non-empty index
+                result_img.append(img[..., img_channel_index])
+                img_channel_index += 1  # Move to the next channel in img for the next non-empty channel
+            else:
+                result_img.append(empty_image)
+
+    return np.stack(result_img, axis=-1)

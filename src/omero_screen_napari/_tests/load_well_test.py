@@ -6,6 +6,7 @@ os.environ["USE_LOCAL_ENV"] = "1"
 import napari  # noqa: E402
 
 from omero_screen_napari._welldata_widget import welldata_widget  # noqa: E402
+from omero_screen_napari._gallery_widget import gallery_gui_widget
 
 
 def test_welldata_widget_interactively():
@@ -29,6 +30,9 @@ def test_welldata_widget_interactively():
     widget.images.value = test_images
     widget.image_id.value = test_image_id
     widget()
+    gallery_widget_instance = gallery_gui_widget()
+    viewer.window.add_dock_widget(gallery_widget_instance, area="right")
+
     # Keep the Napari viewer open for manual inspection
     napari.run()
 
