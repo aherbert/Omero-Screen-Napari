@@ -17,8 +17,8 @@ plate_id = 53
 images = "0"
 
 blue_channel = "DAPI"
-green_channel = "Tub"
-red_channel = "p21"
+green_channel = ""
+red_channel = ""
 
 channels = [red_channel, green_channel, blue_channel]
 segmentation = "Cells"

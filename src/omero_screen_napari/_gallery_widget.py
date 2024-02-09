@@ -73,10 +73,9 @@ def show_gallery(
     columns,
     contour,
     cellcycle,
-    block=False
+    block=False,
 ):
     filtered_channels = list(filter(None, channels))
-    print(f"filtered channels: {filtered_channels}")
     try:
         images = select_channels(filtered_channels)
         if replacement == "With" or cropped_images.cropped_regions == []:
@@ -88,35 +87,28 @@ def show_gallery(
             block,
             contour=contour,
             n_row=rows,
-            n_col=columns
+            n_col=columns,
         )
     except Exception as e:  # noqa: BLE001
-        print(e)
+        logger.error(e)
         # Show a message box with the error message
-        # msg_box = QMessageBox()
-        # msg_box.setIcon(QMessageBox.Warning)
-        # msg_box.setText(str(e))
-        # msg_box.setWindowTitle("Error")
-        # msg_box.setStandardButtons(QMessageBox.Ok)
-        # msg_box.exec_()
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(str(e))
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
 
 
 def select_channels(channels: list[str]) -> np.ndarray:
     """
     Selects the channels to be used for the gallery.
     """
-    print(f"input channels: {channels}")
     channel_data = {k: int(v) for k, v in viewer_data.channel_data.items()}
-    print(f"channel data: {channel_data}")
-    print(f"channels_dicts: {viewer_data.channel_data}")
     assert all(
         item in channel_data for item in channels
     ), "Selected channels not in data"
     order_indices = [channel_data[channel] for channel in channels]
-    print(f"order indices: {order_indices}")
-    print(
-        f"after channel selection{viewer_data.images[..., order_indices].shape}"
-    )
     return viewer_data.images[..., order_indices]
 
 
@@ -396,7 +388,6 @@ def create_gallery_image(
     padding_width: int,
 ) -> np.array:
     img_height, img_width, img_channels = prepared_cells[0].shape
-    print(f"image datatype: {prepared_cells[0].dtype}")
 
     # Adjust gallery dimensions to include border padding
     gallery_height = n_row * img_height + (n_row + 1) * padding_height
@@ -462,7 +453,9 @@ def add_scale_bar(
     )
 
 
-def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size, block):
+def plot_gallery(
+    gallery_image, channels, viewer_data, cellcycle, crop_size, block
+):
     fig, ax = plt.subplots(figsize=(10, 10))
     if channels.count("") == 2:
         ax.imshow(gallery_image[..., 0], cmap="gray_r")
@@ -481,13 +474,19 @@ def plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size, blo
     # Add scale bar
     gallery_height, gallery_width, _ = gallery_image.shape
     add_scale_bar(ax, gallery_width, gallery_height, channels, crop_size)
-    print("plotting gallery")
+    logger.info("plotting gallery")
     plt.show(block=block)
     return fig
 
 
 def plot_random_gallery(
-    channels, crop_size, cellcycle, block, contour=True, n_row=4, n_col=4, 
+    channels,
+    crop_size,
+    cellcycle,
+    block,
+    contour=True,
+    n_row=4,
+    n_col=4,
 ):
     chosen_cells, chosen_labels = choose_random_images(
         cropped_images, n_row, n_col
@@ -502,7 +501,9 @@ def plot_random_gallery(
     gallery_image = create_gallery_image(
         prepared_cells, n_row, n_col, padding_height, padding_width
     )
-    return plot_gallery(gallery_image, channels, viewer_data, cellcycle, crop_size, block)
+    return plot_gallery(
+        gallery_image, channels, viewer_data, cellcycle, crop_size, block
+    )
 
 
 def draw_contours(img, label):

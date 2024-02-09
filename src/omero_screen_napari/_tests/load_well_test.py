@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 
-os.environ["USE_LOCAL_ENV"] = "1"
+os.environ["USE_LOCAL_ENV"] = "0"
 
 import napari  # noqa: E402
 
@@ -19,8 +19,8 @@ def test_welldata_widget_interactively():
     viewer.window.add_dock_widget(widget)
 
     # Set default test parameters for convenience
-    test_plate_id = 53
-    test_well_position = "C2"
+    test_plate_id = 1831
+    test_well_position = "A6"
     test_images = 0
     test_image_id = 0
 

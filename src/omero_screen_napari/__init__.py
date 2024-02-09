@@ -16,7 +16,7 @@ def setup_logging():
     # Create and configure your application's main logger
     app_logger_name = "omero-screen-napari"  # Use a unique name for your application's logger
     app_logger = logging.getLogger(app_logger_name)
-    app_logger.setLevel(logging.INFO)  # Or DEBUG, as per your requirement
+    app_logger.setLevel(logging.DEBUG)  # Or DEBUG, as per your requirement
 
     # Optionally, add any specific handlers/formatters to your app logger here
 

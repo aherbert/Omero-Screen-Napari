@@ -1,7 +1,6 @@
 """
-This module handles the widget to call Omero and load flatfield corrected well images
-as well as segmentation masks (if avaliable) into napari.
-The plugin can be run from napari as Welldata Widget under Plugins.
+This module handles the widget to call Omero and combine all images for a single well
+together to generate a stiched flatfield corrected image.
 """
 
 
@@ -40,12 +39,10 @@ metadata_widget: Optional[QWidget] = None
 
 
 @magic_factory(call_button="Enter")
-def welldata_widget(
+def stitching_widget(
     viewer: Viewer,
     plate_id: str = "Plate ID",
-    well_pos: str = "Well Position",
-    images: str = "All",
-    image_id: int = 0,
+    well_pos_list: str = "Well Position",
 ) -> None:
     """
     This function is a widget for handling well data in a napari viewer.
@@ -54,13 +51,13 @@ def welldata_widget(
     sets color maps, and adds label layers to the viewer.
     """
     global metadata_widget
-
+    well_pos = [item.strip() for item in well_pos_list.split(",")]
+    logger.debug("Well positions: %s", well_pos)
     clear_viewer_layers(viewer)
-    retrieve_data(plate_id, well_pos, images)
+    retrieve_and_stitch_data(plate_id, well_pos)
     add_image_to_viewer(viewer)
     handle_metadata_widget(viewer)
     set_color_maps(viewer)
-    add_label_layers(viewer)
 
 
 # accessory functions for _welldata_widget
@@ -73,10 +70,16 @@ def clear_viewer_layers(viewer: Viewer) -> None:
 
 def add_image_to_viewer(viewer: Viewer) -> None:
     viewer.add_image(
-        viewer_data.images, channel_axis=-1, scale=viewer_data.pixel_size
+    viewer_data.stitched_images,
+    contrast_limits=list(viewer_data.intensities[0]),
+    gamma=1,
+    channel_axis=-1,
+    scale=viewer_data.pixel_size,
+    name='Stitched Image'
     )
     viewer.scale_bar.visible = True
     viewer.scale_bar.unit = "µm"
+    viewer.scale_bar.color = "white"
 
 
 def handle_metadata_widget(viewer: Viewer) -> None:
@@ -92,25 +95,9 @@ def set_color_maps(viewer: Viewer) -> None:
         key: int(value) for key, value in viewer_data.channel_data.items()
     }
     color_maps: dict[str, str] = _generate_color_map(channel_names)
-    for name, index in channel_names.items():
-        layer = viewer.layers[index]
-        layer.name = name
-        layer.colormap = color_maps[name]
-
-
-def add_label_layers(viewer: Viewer) -> None:
-    scale = viewer_data.pixel_size
-    if len(viewer_data.labels.shape) == 3:
-        viewer.add_labels(
-            viewer_data.labels.astype(int), name="Nuclei Masks", scale=scale
-        )
-    elif viewer_data.labels.shape[3] == 2:
-        channel_1_masks = viewer_data.labels[..., 0].astype(int)
-        channel_2_masks = viewer_data.labels[..., 1].astype(int)
-        viewer.add_labels(channel_1_masks, name="Nuclei Masks", scale=scale)
-        viewer.add_labels(channel_2_masks, name="Cell Masks", scale=scale)
-    else:
-        raise ValueError("Invalid segmentation label shape")
+    for layer in viewer.layers:
+        if layer.name in color_maps:
+            layer.colormap = color_maps[layer.name]
 
 
 def _generate_color_map(channel_names: dict) -> dict[str, str]:
@@ -182,14 +169,23 @@ class MetadataWidget(QWidget):
 
 
 # backend handling the omero connection and adding data to viwer_data
-
-
 @omero_connect
+def retrieve_and_stitch_data(plate_id: str, well_positions: List[str], conn: Optional[BlitzGateway] = None) -> None:
+    stitched_images = []  # To hold stitched images for each well
+    for well_pos in well_positions:
+        # Process each well
+        retrieve_data(plate_id, well_pos, conn)
+        stitched_image = _stitch_images()  # Ensure this returns the stitched image for the current well
+        stitched_images.append(stitched_image)
+    
+    # Combine all stitched images into a single 4D array
+    viewer_data.stitched_images = np.stack(stitched_images, axis=0)
+
+
 def retrieve_data(
     plate_id: str,
     well_pos: str,
-    images: str,
-    conn: Optional[BlitzGateway] = None,
+    conn,
 ) -> None:
     """
     Get data from Omero and add it to the viewer_data dataclass object
@@ -203,8 +199,8 @@ def retrieve_data(
         _get_channel_data()
         _process_plate_data()
         _get_well_metadata()
-        _get_images(images, conn)
-        _get_segmentation_masks(conn)
+        _get_images(conn)
+        _stitch_images()
 
     except Exception as e:
         logging.exception("The following error occurred:")  # noqa: G004
@@ -287,6 +283,7 @@ def _get_channel_data():
     and add it to viewer_data; raise exception if no channel data found."""
     map_ann = _get_map_ann(viewer_data.plate)
     channel_data = dict(map_ann)
+    logger.debug(f"channel data is: {channel_data}")
     # convert Hoechst key to DAPI if present
     cleaned_channel_data = {
         key.strip(): value for key, value in channel_data.items()
@@ -413,8 +410,10 @@ def _process_plate_data():
 def _get_intensity_values(df: pd.DataFrame) -> dict[str, Tuple]:
     intensity_dict = {}
     for key, value in viewer_data.channel_data.items():
-        max_value = int(df[f"intensity_max_{key}_nucleus"].mean())
+        max_value = int(df[f"intensity_max_{key}_nucleus"].max())
+        logger.debug("Max value for %s: %s", key, max_value)
         min_value = int(df[f"intensity_min_{key}_nucleus"].min())
+        logger.debug("Min value for %s: %s", key, min_value)
         intensity_dict[int(value)] = (min_value, max_value)
     return intensity_dict
 
@@ -467,38 +466,24 @@ def _get_well_metadata():
 # image data
 
 
-def _get_images(images, conn):
-    image_number = f"image_{images} of {viewer_data.well.getWellPos()}"
+def _get_images(conn):
+    assert (
+        len(list(viewer_data.well.listChildren())) == 21
+    ), "Stiching requires 21 images per well"
     # Lists to store the individual image arrays and ids
     flatfield_array, flatfield_channels = _get_flatfieldmask(conn)
     _check_flatfieldmask(flatfield_channels)
-    logger.info(
-        f"Gathering {image_number}"  # noqa: G004
-    )
     image_arrays: list = []
     image_ids: list = []
-    pattern = r"^\d+-\d+$"
-    if images == "All" or re.match(pattern, images):
-        if images == "All":
-            img_range = range(viewer_data.well.countWellSample())
-        else:
-            start, end = map(int, images.split("-"))
-            img_range = range(start, end + 1)
-        for index in tqdm(img_range):
-            image_id, image_array = _process_omero_image(
-                index, flatfield_array, conn
-            )
-            image_arrays.append(image_array)
-            image_ids.append(image_id)
-    elif images.isdigit():
-        index: int = int(images)
+    img_range = range(viewer_data.well.countWellSample())
+
+    for index in tqdm(img_range):
         image_id, image_array = _process_omero_image(
             index, flatfield_array, conn
         )
         image_arrays.append(image_array)
         image_ids.append(image_id)
-    else:
-        raise ValueError(f"Invalid image number: {images}")
+
     viewer_data.images = np.stack(image_arrays, axis=0)
     viewer_data.image_ids = image_ids
 
@@ -513,22 +498,21 @@ def _process_omero_image(
         conn, viewer_data.well.getImage(index).getId()
     )
     image_array = image_array.squeeze()
+    logger.debug("Image dtype: %s", image_array.dtype)
+    logger.debug("Image max: %s", image_array.max())
     corrected_array = image_array / flatfield_array
+    logger.debug("Corr Image dtype: %s", corrected_array.dtype)
+    logger.debug("Corr Image max: %s", corrected_array.max())
+    logger.debug("Corr Image min: %s", corrected_array.min())
     if len(corrected_array.shape) == 2:
         corrected_array = corrected_array[..., np.newaxis]
-    # Iterate through each channel to scale it
-    scaled_channels = []
-    for i in range(corrected_array.shape[-1]):
-        scaled_channel = scale_img(
-            corrected_array[..., i], viewer_data.intensities[i]
-        )
-        scaled_channels.append(scaled_channel)
-    return image.getId(), np.stack(scaled_channels, axis=-1)
+    return image.getId(), corrected_array #np.stack(scaled_channels, axis=-1)
 
 
-def scale_img(img: np.array, intensities: tuple) -> np.array:
+def scale_img(img: np.array) -> np.array:
     """Increase contrast by scaling image to exclude lowest and highest intensities"""
-    return exposure.rescale_intensity(img, in_range=intensities)
+    percentiles = np.percentile(img, (1, 99))
+    return exposure.rescale_intensity(img, in_range=tuple(percentiles))
 
 
 def _get_flatfieldmask(conn):
@@ -539,6 +523,8 @@ def _get_flatfieldmask(conn):
         if flatfield_mask_name == image_name:
             flatfield_mask_id = image.getId()
             flatfield_obj, flatfield_array = get_image(conn, flatfield_mask_id)
+            logger.debug("Flatfield mask dtype: %s", flatfield_array.dtype)
+            logger.debug("Flatfield mask range: %s, %s", flatfield_array.min(), flatfield_array.max())
             flatfield_channels = dict(_get_map_ann(flatfield_obj))
             for key, value in flatfield_channels.items():
                 flatfield_channels[key] = value.strip()
@@ -561,82 +547,39 @@ def _check_flatfieldmask(flatfield_channels):
             )
 
 
-# get the image labels
-def _get_segmentation_masks(conn):
-    """
-    Get segmentation masks as mask list
-    """
-    mask_list = []
-    name_to_id = {
-        image.getName(): image.getId()
-        for image in viewer_data.screen_dataset.listChildren()
-    }
-    for image_name in viewer_data.image_ids:
-        image_id = name_to_id.get(f"{image_name}_segmentation")
-        if image_id is not None:
-            mask, mask_array = get_image(conn, image_id)
-            mask_array = mask_array.squeeze()
-            mask_list.append(mask_array)
-    viewer_data.labels = np.stack(mask_list, axis=0)
-
-
-if __name__ == "__main__":
-
-    def test_welldata_widget_interactively():
-        # Start Napari
-
-        viewer = napari.Viewer()
-
-        # Initialize the welldata_widget and add it to the viewer
-        widget = welldata_widget()
-        viewer.window.add_dock_widget(widget)
-
-        # Set default test parameters for convenience
-        test_plate_id = 1237
-        test_well_position = "B7"
-        test_images = 0
-
-        # Pre-fill the widget with default test values
-        widget.plate_id.value = test_plate_id
-        widget.well_pos.value = test_well_position
-        widget.images.value = test_images
-
-        # Programmatically simulate the 'Enter' button click
-        widget()
-
-        # Keep the Napari viewer open for manual inspection
-        napari.run()
-
-    test_welldata_widget_interactively()
-
-def stich_image(image_array: np.ndarray) -> np.ndarray:
+def _stitch_images() -> np.ndarray:
     """Stitch the images in the array according to the specified pattern
     This is only allowed when 21 single channel 10x images from an Operetta microscope
     are provided)
-
-    Args:
-        image_array (np.ndarray): 21x1080x1080x1 array of images
+    returns: [np.ndarray] stitched image of shape (5*1080, 5*1080, 1)
     """
-    assert image_array.shape == (
+    logger.debug("Stitching images %s", viewer_data.images.shape)
+    assert viewer_data.images.shape == (
         21,
         1080,
         1080,
         1,
     ), "The input array should be 21x1080x1080x1"
 
+
     # Creating an empty array to add as spacer
-    empty_array = np.zeros((1080, 1080, 1))
+    empty_array = np.full((1080, 1080, 1), fill_value=viewer_data.intensities[0][0])
 
     indices_pattern = [
-        [-1, 2, 3, 4, -1],
-        [9, 8, 7, 6, 5],
-        [10, 11, 1, 12, 13],
-        [18, 17, 16, 15, 14],
-        [-1, 19, 20, 21, -1],
+        [
+            -1,
+            1,
+            2,
+            3,
+            -1,
+        ],  # Adjusted for zero-based indexing but preserved -1 for empty
+        [8, 7, 6, 5, 4],  # Adjusted for zero-based indexing
+        [9, 10, 0, 11, 12],  # The first image is now 0 (zero-based)
+        [17, 16, 15, 14, 13],  # Adjusted for zero-based indexing
+        [-1, 18, 19, 20, -1],  # Preserved -1 for empty
     ]
 
-    # Adjusting for zero-based indexing
-    indices_pattern = np.array(indices_pattern) - 1
+    # No need to adjust indices by subtracting 1 since we've directly used zero-based indices above
 
     # Create the stitched image
     stitched_shape = (5 * 1080, 5 * 1080, 1)  # 25x25 of 1080x1080 images
@@ -657,5 +600,7 @@ def stich_image(image_array: np.ndarray) -> np.ndarray:
             else:
                 stitched_image[
                     x_pos : x_pos + 1080, y_pos : y_pos + 1080, :
-                ] = image_array[idx]
+                ] = viewer_data.images[idx]
+    logger.debug("Stitched image shape: %s", stitched_image.shape)
     return stitched_image
+    

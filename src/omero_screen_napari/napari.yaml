@@ -5,6 +5,9 @@ contributions:
     - id: omero-screen-napari.welldata_widget
       python_name: omero_screen_napari._welldata_widget:welldata_widget
       title: Make Welldata widget
+    - id: omero-screen-napari.stitching_widget
+      python_name: omero_screen_napari._stitching_widget:stitching_widget
+      title: Stitching widget
     - id: omero-screen-napari.gallery_widget
       python_name: omero_screen_napari._gallery_widget:gallery_gui_widget
       title: Make Gallery widget
@@ -14,6 +17,8 @@ contributions:
   widgets:
     - command: omero-screen-napari.welldata_widget
       display_name: Welldata Widget
+    - command: omero-screen-napari.stitching_widget
+      display_name: Stitching Widget
     - command: omero-screen-napari.gallery_widget
       display_name: Gallery Widget
     - command: omero-screen-napari.training_gui
