@@ -12,6 +12,7 @@ class ViewerData:
     plate_name: str = field(default_factory=str)
     plate: _PlateWrapper = field(default_factory=_PlateWrapper)
     plate_data: pd.DataFrame = field(default_factory=pd.DataFrame)
+    csv_path: str = field(default_factory=str)
     well: _WellWrapper = field(default_factory=_WellWrapper)
     well_name: str = field(default_factory=str)
     well_id: int = field(default_factory=int)

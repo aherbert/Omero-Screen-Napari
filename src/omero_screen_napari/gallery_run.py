@@ -5,15 +5,15 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-os.environ["USE_LOCAL_ENV"] = "1"
+os.environ["USE_LOCAL_ENV"] = "0"
 
 
 from omero_screen_napari._gallery_widget import show_gallery
-from omero_screen_napari._welldata_widget import retrieve_data
+from omero_screen_napari.omero_api import retrieve_data
 from omero_screen_napari.omero_utils import omero_connect
 from omero_screen_napari.viewer_data_module import viewer_data
 
-plate_id = 53
+plate_id = 1821
 images = "0"
 
 blue_channel = "DAPI"
@@ -22,7 +22,7 @@ red_channel = ""
 
 channels = [red_channel, green_channel, blue_channel]
 segmentation = "Cells"
-replacement = "Without"
+replacement = "With"
 crop_size = 100
 cellcycle = "All"
 rows = 5
