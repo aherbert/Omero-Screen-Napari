@@ -13,17 +13,19 @@ class ViewerData:
     plate: _PlateWrapper = field(default_factory=_PlateWrapper)
     plate_data: pd.DataFrame = field(default_factory=pd.DataFrame)
     csv_path: str = field(default_factory=str)
-    well: _WellWrapper = field(default_factory=_WellWrapper)
-    well_name: str = field(default_factory=str)
-    well_id: int = field(default_factory=int)
-    screen_dataset: _DatasetWrapper = field(default_factory=_DatasetWrapper)
+    flatfield_masks: np.ndarray = field(default_factory=lambda: np.empty((0,)))
+    well: list[_WellWrapper] = field(default_factory=list)
+    well_name: list[str] = field(default_factory=list)
+    well_id: list[int] = field(default_factory=list)
+    screen_dataset: _DatasetWrapper = field(default_factory=_DatasetWrapper) # dataset with flatfield masks and segementations
     pixel_size: tuple = field(default_factory=tuple)
     channel_data: dict = field(default_factory=dict)
     intensities: dict = field(default_factory=dict)
-    metadata: dict = field(default_factory=dict)
+    metadata: list[dict] = field(default_factory=list)
     images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
     image_ids: list = field(default_factory=list)
     labels: np.ndarray = field(default_factory=lambda: np.empty((0,)))
+    label_ids: list = field(default_factory=list)
     stitched_images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
 
 
@@ -36,3 +38,4 @@ class CroppedImages:
 
 viewer_data = ViewerData()
 cropped_images = CroppedImages()
+

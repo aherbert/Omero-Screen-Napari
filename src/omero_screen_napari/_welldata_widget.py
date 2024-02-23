@@ -12,7 +12,7 @@ import os
 import re
 import tempfile
 from typing import List, Optional, Tuple
-
+from pathlib import Path
 import napari
 import numpy as np
 import omero
@@ -25,9 +25,11 @@ from qtpy.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari.omero_utils import omero_connect
-from omero_screen_napari.viewer_data_module import viewer_data
-from omero_screen_napari.omero_api import retrieve_data
+from omero_screen_napari.omero_api import retrieve_wells
+from omero_screen_napari.omero_utils import load_dotenv
+from omero_screen_napari.viewer_data_module import (
+    viewer_data,ViewerData
+)
 
 # Looging
 
@@ -44,9 +46,9 @@ metadata_widget: Optional[QWidget] = None
 def welldata_widget(
     viewer: Viewer,
     plate_id: str = "Plate ID",
-    well_pos: str = "Well Position",
+    well_pos_list: str = "Well Position",
     images: str = "All",
-    image_id: int = 0,
+    reset_data: bool = False,
 ) -> None:
     """
     This function is a widget for handling well data in a napari viewer.
@@ -55,9 +57,30 @@ def welldata_widget(
     sets color maps, and adds label layers to the viewer.
     """
     global metadata_widget
-
+    if reset_data:
+        # Reset viewer_data to its default state
+        global viewer_data
+        viewer_data = ViewerData()
+        logger.info("Data has been reset.")
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        localenv_path = Path(__file__).resolve().parent.parent / ".localenv"
+        logger.debug('.env_path = %s', env_path)
+        dotenv_path = (
+            localenv_path if os.getenv("USE_LOCAL_ENV") == "1" else env_path
+        )
+        # Load the environment variables
+        load_dotenv(dotenv_path=dotenv_path)
+        project_id = os.getenv("PROJECT_ID")
+        viewer_data.project_id = project_id
+        logger.debug(f"remaining image_ids are {viewer_data.image_ids}")
+    
+    logger.debug("Plate ID: %s", plate_id)
+    logger.debug("Well positions: %s", well_pos_list)
+    well_pos = [item.strip() for item in well_pos_list.split(",")]
+    logger.debug("Well positions: %s", well_pos)
     clear_viewer_layers(viewer)
-    retrieve_data(plate_id, well_pos, images)
+    retrieve_wells(plate_id, well_pos, images, viewer_data)
+    logger.debug(f"Image shape is {viewer_data.images.shape}")
     add_image_to_viewer(viewer)
     handle_metadata_widget(viewer)
     set_color_maps(viewer)
@@ -68,8 +91,10 @@ def welldata_widget(
 
 
 def clear_viewer_layers(viewer: Viewer) -> None:
-    viewer.layers.select_all()
-    viewer.layers.remove_selected()
+    while len(viewer.layers) > 0:
+        viewer.layers.pop(0)
+   
+    
 
 
 def add_image_to_viewer(viewer: Viewer) -> None:
@@ -174,11 +199,14 @@ class MetadataWidget(QWidget):
         self.layout = QVBoxLayout()
 
         self.label = QLabel()
+        label_text = ""
+        for dict_ in metadata:
+            for key, value in dict_.items():
+                label_text += f"{key}: {value}\n"
+
         self.label.setText(
-            "\n".join(f"{key}: {value}" for key, value in metadata.items()),
-        )
+            label_text.rstrip()
+        )  # Remove the last newline character
 
         self.layout.addWidget(self.label)
         self.setLayout(self.layout)
-
-

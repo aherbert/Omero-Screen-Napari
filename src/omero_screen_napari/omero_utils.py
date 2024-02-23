@@ -36,12 +36,9 @@ def omero_connect(func):
 
     @functools.wraps(func)
     def wrapper_omero_connect(*args, **kwargs):
-        try:
-            conn = BlitzGateway(username, password, host=host)
-        except OSError:
-            logger.error("could not get login data")
         value = None
         try:
+            conn = BlitzGateway(username, password, host=host)
             logger.info("Connecting to Omero")
             if conn.connect():
                 value = func(*args, **kwargs, conn=conn)
