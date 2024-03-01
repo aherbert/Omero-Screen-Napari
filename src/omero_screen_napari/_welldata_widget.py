@@ -26,7 +26,7 @@ from skimage import exposure
 from tqdm import tqdm
 
 from omero_screen_napari.omero_api import retrieve_wells
-from omero_screen_napari.omero_utils import load_dotenv
+from omero_screen_napari._omero_utils import load_dotenv
 from omero_screen_napari.viewer_data_module import (
     viewer_data,ViewerData
 )

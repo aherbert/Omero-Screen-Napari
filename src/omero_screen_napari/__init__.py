@@ -1,4 +1,6 @@
 import logging
+import os
+from pathlib import Path
 
 try:
     from ._version import version as __version__
@@ -23,3 +25,9 @@ def setup_logging():
 
 # Ensure this is called when your package is imported
 setup_logging()
+
+def set_env_vars():
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    localenv_path = Path(__file__).resolve().parent.parent / ".localenv"
+    return localenv_path if os.getenv("USE_LOCAL_ENV") == "1" else env_path
+

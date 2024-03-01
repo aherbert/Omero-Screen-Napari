@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omero.gateway import BlitzGateway
 
-from omero_screen_napari.viewer_data_module import viewer_data
+from omero_screen_napari import set_env_vars
 
 logger = logging.getLogger("omero-screen-napari")
 
@@ -16,36 +16,30 @@ def omero_connect(func):
     :param func: function to be decorated
     :return: wrapper function: passes conn to function and closes it after execution
     """
-    logger.debug('omero environment_var = %s', os.environ.get("USE_LOCAL_ENV"))
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    localenv_path = Path(__file__).resolve().parent.parent / ".localenv"
-
-    logger.debug('.env_path = %s', env_path)
-    dotenv_path = (
-        localenv_path if os.getenv("USE_LOCAL_ENV") == "1" else env_path
-    )
-
-    # Load the environment variables
+    # Load environment variables
+    dotenv_path = set_env_vars()
     load_dotenv(dotenv_path=dotenv_path)
 
     username = os.getenv("USERNAME")
     password = os.getenv("PASSWORD")
     host = os.getenv("HOST")
-    project_id = os.getenv("PROJECT_ID")
-    viewer_data.project_id = project_id
 
     @functools.wraps(func)
     def wrapper_omero_connect(*args, **kwargs):
         value = None
         try:
             conn = BlitzGateway(username, password, host=host)
-            logger.info("Connecting to Omero")
+            logger.info(f"Connecting to Omero at host: {host}")
             if conn.connect():
                 value = func(*args, **kwargs, conn=conn)
                 conn.close()
                 logger.info("Disconnecting from Omero")
             else:
-                logger.error(f"Failed to connect to Omero: {conn.getLastError()}")
+                error_msg = f"Failed to connect to Omero: {conn.getLastError()}"
+                logger.error(error_msg) 
+# sourcery skip: raise-specific-error
+                raise Exception(error_msg)
+                
         finally:
             # No side effects if called without a connection
             conn.close()

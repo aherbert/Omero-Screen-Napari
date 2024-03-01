@@ -21,7 +21,7 @@ from qtpy.QtWidgets import QMessageBox
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari.omero_utils import omero_connect, load_dotenv
+from omero_screen_napari._omero_utils import omero_connect, load_dotenv
 
 # Looging
 
@@ -64,7 +64,7 @@ def retrieve_well_data(
             _stitch_images(viewer_data)
 
     except Exception as e:
-        logging.exception("The following error occurred:")  # noqa: G004
+        logging.exception(f"The following error occurred: {e}")  # noqa: G004
         # Show a message box with the error message
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
@@ -82,6 +82,7 @@ def _get_plate(viewer_data, conn: BlitzGateway, plate_id: str) -> None:
         plate_id (_type_): _description_
     """
     if plate_id != viewer_data.plate_id:
+        logger.info(f"Retrieving new plate data for plate {plate_id}")  # noqa: G004
         _get_plate_metadata(viewer_data, conn, plate_id)
         _get_channel_data(viewer_data)
         _process_plate_data(viewer_data)
@@ -106,7 +107,7 @@ def _get_plate_metadata(viewer_data, conn: BlitzGateway, plate_id: str) -> None:
     """
     # get plate object
     viewer_data.plate_id = int(plate_id)
-    logger.info(f"Retrieveing data for plate: {viewer_data.plate_id} from Omero")
+    logger.info(f"Retrieveing data for plate: {viewer_data.plate_id} from Omero")  # noqa: G004
     viewer_data.plate = conn.getObject("Plate", viewer_data.plate_id)
     if viewer_data.plate is None:
         raise ValueError(f"Plate with ID {plate_id} does not exist")
