@@ -1,11 +1,18 @@
-import pytest
 from unittest.mock import MagicMock, create_autospec
-from omero_screen_napari.plate_handler import (
-    CsvFileManager,
-    ChannelDataManager,
+
+import pytest
+from omero.gateway import (
+    DatasetWrapper,
+    FileAnnotationWrapper,
+    MapAnnotationWrapper,
+    ProjectWrapper,
 )
-from omero_screen_napari.plate_handler import OmeroData
-from omero.gateway import FileAnnotationWrapper, MapAnnotationWrapper, ProjectWrapper, DatasetWrapper
+
+from omero_screen_napari.plate_handler import (
+    ChannelDataManager,
+    CsvFileManager,
+    OmeroData,
+)
 
 
 class MockPlate:
@@ -57,26 +64,43 @@ def mock_omero_data():
 
 @pytest.fixture
 def mock_conn():
-    def _create_mock_conn(project_id, datasets):
-        mock_project = create_autospec(ProjectWrapper, instance=True)
-        mock_project.getId.return_value = project_id
+    """
+    Create a mock connection object.
 
-        # Adjusted mock datasets creation to explicitly set getId return value
+    Args:
+        mock_project_id: The ID of the mock project.
+        datasets: A dictionary mapping dataset names to their project_ids.
+
+    Returns:
+        MagicMock: A mock connection object.
+    """
+    def _create_mock_conn(mock_project_id, datasets):
+        # Create a mock project with autospec for more realistic behavior
+        mock_project = create_autospec(ProjectWrapper, instance=True)
+        mock_project.getId.return_value = mock_project_id
+
+        # Create mock datasets, keyed by name, with autospec for realistic behavior
         mock_datasets = {}
         for name, ds_id in datasets.items():
             mock_ds = create_autospec(DatasetWrapper, instance=True)
-            mock_ds.getId.return_value = ds_id  # This ensures getId() returns the integer ID
+            mock_ds.getId.return_value = ds_id  # Ensures getId() returns the specified integer ID
             mock_datasets[name] = mock_ds
 
-        def get_object(_type, *args, **kwargs):
+        # Function to simulate getObject behavior
+        def get_object(_type, attributes=None, opts=None):
+            attributes = attributes or {}
+            opts = opts or {}
+
             if _type == "Project":
                 return mock_project
-            elif _type == "Dataset" and "attributes" in kwargs:
-                dataset_name = kwargs["attributes"].get("name")
-                if dataset_name in mock_datasets and "opts" in kwargs and kwargs["opts"].get("project") == project_id:
-                    return mock_datasets[dataset_name]
+            elif _type == "Dataset":
+                dataset_name = attributes.get("name")
+                project_id = opts.get("project")
+                if dataset_name and project_id == mock_project.getId.return_value:
+                    return mock_datasets.get(dataset_name)
             return None
 
+        # Create a MagicMock for the connection, with getObject using our custom logic
         mock_conn = MagicMock()
         mock_conn.getObject.side_effect = get_object
 
@@ -84,7 +108,33 @@ def mock_conn():
 
     return _create_mock_conn
 
+class MockImage:
+    """
+    Mock to supply images for testing the listChidlren method of the Omero DatasetWrapper.
+    """
+    def __init__(self, name):
+        self._name = name
 
+    def getName(self):
+        return self._name
+
+    def getId(self):
+        return "mock_id"  # Return a mock ID or vary this as needed for your tests
+@pytest.fixture
+def mock_image():
+    # This fixture creates a single MockImage instance
+    name = "default_name"
+    return MockImage(name)
+
+@pytest.fixture
+def mock_screen_dataset_factory():
+    """Fixture factory to create a mock screen dataset with a dynamic list of children."""
+    def _factory(mock_images):
+        class MockScreenDataset:
+            def listChildren(self):
+                return iter(mock_images)
+        return MockScreenDataset()
+    return _factory
 
 @pytest.fixture
 def csv_manager(mock_omero_data, mock_plate):
@@ -118,34 +168,17 @@ def csv_manager_with_mocked_file(mock_omero_data, tmp_path):
     return handler
 
 
-# from unittest.mock import MagicMock
+@pytest.fixture
+def mock_flatfield_obj():
+    # Mock the flatfield object with listAnnotations method
+    mock = MagicMock()
+    mock.listAnnotations = MagicMock()
+    return mock
 
-# import pytest
-# from omero.gateway import BlitzGateway
-
-
-# @pytest.fixture
-# def mock_omero_conn(mocker):
-#     """Mock the BlitzGateway connection."""
-#     return mocker.MagicMock(spec=BlitzGateway)
-
-# # Mocking conn.getPlate and its connected objects:
-
-# @pytest.fixture
-# def mock_plate():
-#     # Create mock objects
-#     mock_plate = MagicMock()
-
-
-#     mock_well = MagicMock()
-#     mock_image = MagicMock()
-#     mock_pixels = MagicMock()
-#     mock_plate.listChildren.return_value = [mock_well]
-
-#     # Setup mock methods and return values
-#     mock_pixels.getPhysicalSizeX.return_value = 0.123
-#     mock_pixels.getPhysicalSizeY.return_value = 0.456
-#     mock_image.getPrimaryPixels.return_value = mock_pixels
-#     mock_well.getImage.return_value = mock_image
-
-#     return mock_plate
+@pytest.fixture
+def mock_flatfield_map_annotation():
+    def _mock_map_annotation(values):
+        mock = MagicMock(spec=MapAnnotationWrapper)
+        mock.getValue.return_value = values
+        return mock
+    return _mock_map_annotation
