@@ -9,7 +9,9 @@ os.environ["USE_LOCAL_ENV"] = "1"
 from omero_screen_napari.plate_handler import (
     CsvFileManager,
     ChannelDataManager,
-)  # noqa: E402, I001
+    FlatfieldMaskManager,
+    ScaleIntensityManager
+) 
 from omero_screen_napari._omero_utils import omero_connect  # noqa: E402, I001
 from omero_screen_napari.omero_data_singleton import omero_data  # noqa: E402, I001
 
@@ -53,6 +55,7 @@ def test_channel_data_manager(conn=None):
     plate = conn.getObject("Plate", 53)
     channel_manager = ChannelDataManager(omero_data, plate)
     channel_manager.get_channel_data()
+    print(omero_data.channel_data)
     assert omero_data.channel_data == {
         "DAPI": "0",
         "Tub": "1",
@@ -89,3 +92,44 @@ def test_noDapi_channel_data_manager(conn=None):
     assert "No DAPI or Hoechst channel information found" in str(
         exc_info.value
     )
+
+
+
+
+@omero_connect
+def test_flatfield_channel_data_manager(conn=None):
+    """
+    Test the channel data manager on a plate without channel data
+    """
+    omero_data.reset()
+    omero_data.channel_data = {
+        "DAPI": "0",
+        "Tub": "1",
+        "p21": "2",
+        "EdU": "3",
+    }
+    omero_data.plate_id = 53
+    manager = FlatfieldMaskManager(omero_data, conn)
+    manager.get_flatfieldmask()
+    assert omero_data.flatfield_mask.shape == (1, 1, 1080, 1080, 4), "Failed to retrieve flatfield mask"
+@omero_connect
+def test_scale_intensity_manager(cleanup_csv_directory, conn=None):
+    """
+    Test the scale intensity manager
+    """
+    omero_data.reset()
+    omero_data.plate_id = 53
+    plate = conn.getObject("Plate", 53)
+    csv_manager = CsvFileManager(omero_data, plate)
+    csv_manager.csv_path = cleanup_csv_directory
+    csv_manager.handle_csv()
+    omero_data.channel_data = {
+        "DAPI": "0",
+        "Tub": "1",
+        "p21": "2",
+        "EdU": "3",
+    }
+    manager = ScaleIntensityManager(omero_data)
+    manager.get_intensities()
+    assert {'DAPI': (280, 15378), 'Tub': (3696, 20275), 'p21': (2006, 4373), 'EdU': (236, 4728)} == omero_data.intensities
+    
