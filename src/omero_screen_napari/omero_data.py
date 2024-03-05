@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -25,6 +26,14 @@ def get_project_id() -> int:
     logger.info(f"Loading environment variables from {dotenv_path}")  # noqa: G004
     return int(os.getenv("PROJECT_ID", default_project_id))
 
+def get_data_path() -> int:
+    """_summary_
+    Fetch data_path from the environment
+    Returns:
+        Path: path to folder that saves the csv data to avoid reloading from the server.
+    """
+    default_data_path = '~/omero-napari-data'
+    return Path(os.getenv("PROJECT_ID", default_data_path))
 @dataclass
 class OmeroData:
     """
@@ -37,7 +46,8 @@ class OmeroData:
     plate_name: str = field(default_factory=str)
     plate: _PlateWrapper = field(default_factory=_PlateWrapper)
     plate_data: pl.LazyFrame = field(default_factory=pl.LazyFrame)
-    csv_path: str = field(default_factory=str)
+    data_path: Path = field(default_factory=get_data_path)
+    csv_path: Path = field(default_factory=Path)
     flatfield_masks: np.ndarray = field(default_factory=lambda: np.empty((0,)))
     pixel_size: tuple = field(default_factory=tuple)
     channel_data: dict = field(default_factory=dict)
