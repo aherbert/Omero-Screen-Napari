@@ -62,6 +62,7 @@ def mock_omero_data():
     mock_data.csv_path = "/path/to/csv"
     return mock_data
 
+
 @pytest.fixture
 def mock_conn():
     """
@@ -74,6 +75,7 @@ def mock_conn():
     Returns:
         MagicMock: A mock connection object.
     """
+
     def _create_mock_conn(mock_project_id, datasets):
         # Create a mock project with autospec for more realistic behavior
         mock_project = create_autospec(ProjectWrapper, instance=True)
@@ -83,7 +85,9 @@ def mock_conn():
         mock_datasets = {}
         for name, ds_id in datasets.items():
             mock_ds = create_autospec(DatasetWrapper, instance=True)
-            mock_ds.getId.return_value = ds_id  # Ensures getId() returns the specified integer ID
+            mock_ds.getId.return_value = (
+                ds_id  # Ensures getId() returns the specified integer ID
+            )
             mock_datasets[name] = mock_ds
 
         # Function to simulate getObject behavior
@@ -96,7 +100,10 @@ def mock_conn():
             elif _type == "Dataset":
                 dataset_name = attributes.get("name")
                 project_id = opts.get("project")
-                if dataset_name and project_id == mock_project.getId.return_value:
+                if (
+                    dataset_name
+                    and project_id == mock_project.getId.return_value
+                ):
                     return mock_datasets.get(dataset_name)
             return None
 
@@ -108,10 +115,12 @@ def mock_conn():
 
     return _create_mock_conn
 
+
 class MockImage:
     """
     Mock to supply images for testing the listChidlren method of the Omero DatasetWrapper.
     """
+
     def __init__(self, name):
         self._name = name
 
@@ -119,32 +128,43 @@ class MockImage:
         return self._name
 
     def getId(self):
-        return "mock_id"  # Return a mock ID or vary this as needed for your tests
+        return (
+            "mock_id"  # Return a mock ID or vary this as needed for your tests
+        )
+
+
 @pytest.fixture
 def mock_image():
     # This fixture creates a single MockImage instance
     name = "default_name"
     return MockImage(name)
 
+
 @pytest.fixture
 def mock_screen_dataset_factory():
     """Fixture factory to create a mock screen dataset with a dynamic list of children."""
+
     def _factory(mock_images):
         class MockScreenDataset:
             def listChildren(self):
                 return iter(mock_images)
+
         return MockScreenDataset()
+
     return _factory
+
 
 @pytest.fixture
 def csv_manager(mock_omero_data, mock_plate):
     # This fixture now requires an additional parameter to specify file names
     return CsvFileManager(omero_data=mock_omero_data, plate=mock_plate)
 
+
 @pytest.fixture
 def channel_manager(mock_omero_data, mock_plate):
     # This fixture now requires an additional parameter to specify file names
     return ChannelDataManager(omero_data=mock_omero_data, plate=mock_plate)
+
 
 @pytest.fixture
 def csv_manager_with_mocked_file(mock_omero_data, tmp_path):
@@ -163,7 +183,7 @@ def csv_manager_with_mocked_file(mock_omero_data, tmp_path):
     # Mock the original_file and csv_path attributes
     handler.original_file = mock_original_file
     handler.csv_path = tmp_path
-    handler.file_name = "example_final_data.csv"
+    handler._file_name = "example_final_data.csv"
 
     return handler
 
@@ -175,10 +195,12 @@ def mock_flatfield_obj():
     mock.listAnnotations = MagicMock()
     return mock
 
+
 @pytest.fixture
 def mock_flatfield_map_annotation():
     def _mock_map_annotation(values):
         mock = MagicMock(spec=MapAnnotationWrapper)
         mock.getValue.return_value = values
         return mock
+
     return _mock_map_annotation

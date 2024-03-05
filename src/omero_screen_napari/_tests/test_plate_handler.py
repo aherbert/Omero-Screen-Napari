@@ -1,33 +1,40 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
+import polars as pl
 import pytest
 
+from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.plate_handler import (
+    CsvFileManager,
     ChannelDataManager,
     FlatfieldMaskManager,
+    ScaleIntensityManager,
 )
 
 
 # __________________________TESTING CSV FILE MANAGER________________________________
-def test_csv_available_when_file_exists(tmp_path, csv_manager):
-    csv_path = tmp_path / "omero_screen_data"
-    csv_path.mkdir(exist_ok=True)
-    csv_manager.csv_path = csv_path
-    (csv_path / "123.csv").touch()
+def test_csv_available_when_file_exists(tmp_path, mock_omero_data):
+    data_path = tmp_path / "omero_screen_data"
+    mock_omero_data.data_path = data_path
+    mock_omero_data.data_path.mkdir(exist_ok=True)
+    csv_manager = CsvFileManager(mock_omero_data, MagicMock())
+    tmp_file = data_path / "123.csv"
+    tmp_file.touch()
     assert csv_manager._csv_available() is True, "The csv file was not found."
-    print(f"omero_data after execution: {csv_manager.omero_data.csv_path}")
     assert (
-        csv_manager.omero_data.csv_path == csv_path / "123.csv"
+        csv_manager._csv_file_path == tmp_file
     ), "The csv path was not set correctly."
 
 
-def test_csv_unvailable_when_file_exists(tmp_path, csv_manager):
-    csv_path = tmp_path / "omero_screen_data"
-    csv_path.mkdir(exist_ok=True)
-    csv_manager.csv_path = csv_path
-    (csv_path / "456.csv").touch()
+def test_csv_unvailable_when_file_exists(tmp_path, mock_omero_data):
+    data_path = tmp_path / "omero_screen_data"
+    mock_omero_data.data_path = data_path
+    mock_omero_data.data_path.mkdir(exist_ok=True)
+    csv_manager = CsvFileManager(mock_omero_data, MagicMock())
+    tmp_file = data_path / "124.csv"
+    tmp_file.touch()
     assert not csv_manager._csv_available()
 
 
@@ -250,8 +257,8 @@ def test_get_flatfieldmask_found(
         manager._get_flatfieldmask()
         mock_get_image.assert_called_once()
 
-        assert manager.flatfield_array is not None
-        assert manager.flatfield_array.shape == (10, 10)
+        assert manager._flatfield_array is not None
+        assert manager._flatfield_array.shape == (10, 10)
 
 
 def test_get_flatfieldmask_not_found(
@@ -281,9 +288,9 @@ def test_get_map_ann_with_annotations(
 ):
     omero_data = MagicMock()
     manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_obj = mock_flatfield_obj
+    manager._flatfield_obj = mock_flatfield_obj
 
-    annotation_values = [( "some_value", key_variation), ("key2", "value2")]
+    annotation_values = [("some_value", key_variation), ("key2", "value2")]
     mock_flatfield_obj.listAnnotations.return_value = [
         mock_flatfield_map_annotation(annotation_values),
     ]
@@ -291,8 +298,9 @@ def test_get_map_ann_with_annotations(
     manager._get_map_ann()
 
     normalized_values = [
-    value.strip().lower()
-    for _keykey, value in manager.flatfield_channels.items()]
+        value.strip().lower()
+        for _keykey, value in manager._flatfield_channels.items()
+    ]
 
     assert (
         "dapi" in normalized_values or "hoechst" in normalized_values
@@ -305,7 +313,7 @@ def test_get_map_ann_without_annotations(
 ):
     omero_data = MagicMock()
     manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_obj = mock_flatfield_obj
+    manager._flatfield_obj = mock_flatfield_obj
 
     annotation_values = [("some_key", "some_value"), ("key2", "value2")]
     mock_flatfield_obj.listAnnotations.return_value = [
@@ -325,7 +333,7 @@ def test_get_map_ann_without_appropriate_annotations(
 ):
     # Setup for a scenario with no appropriate map annotations
     manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_obj = mock_flatfield_obj
+    manager._flatfield_obj = mock_flatfield_obj
     mock_flatfield_obj.listAnnotations.return_value = [
         MagicMock()
     ]  # No MapAnnotationWrapper instances
@@ -338,100 +346,148 @@ def test_get_map_ann_without_appropriate_annotations(
     )
 
 
-# tests for reverse channel function
-
-# Test data for happy path scenarios
-happy_path_data = [
-    ("single_channel", {"channel_1": 1}, {"1": "channel_1"}),
-    (
-        "multiple_channels",
-        {"channel_1": 1, "channel_2": 2},
-        {"1": "channel_1", "2": "channel_2"},
-    ),
-    (
-        "non_sequential",
-        {"channel_1": 3, "channel_5": 1},
-        {"3": "channel_1", "1": "channel_5"},
-    ),
-    (
-        "with_extra_underscores",
-        {"channel_extra_1": 1},
-        {"1": "channel_extra_1"},
-    ),
-]
-
-# Test data for edge cases
-edge_cases_data = [
-    ("empty_dict", {}, {}),
-    (
-        "non_numeric_values",
-        {"channel_a": "a", "channel_b": "b"},
-        {"a": "channel_a", "b": "channel_b"},
-    ),
-]
-
-# Test data for error cases
-error_cases_data = [
-    ("non_dict", "not_a_dict", ValueError),
-    ("list_instead_of_dict", ["channel_1", "channel_2"], ValueError),
-]
-
-
-@pytest.mark.parametrize(
-    "test_id, flatfield_channels, expected_output", happy_path_data
-)
-def test_reverse_flatfield_channels_happy_path(
-    test_id, flatfield_channels, mock_conn, expected_output
-):
-    # Arrange
-    manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_channels = flatfield_channels
-
-    # Act
-    result = manager.reverse_flatfield_channels()
-
-    # Assert
-    assert (
-        result == expected_output
-    ), f"Test {test_id} failed: {result} != {expected_output}"
-
-
-@pytest.mark.parametrize("test_id, flatfield_channels, expected_output", edge_cases_data)
-def test_reverse_flatfield_channels_edge_cases(test_id, flatfield_channels, mock_conn, expected_output):
-    # Arrange
-    manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_channels = flatfield_channels
-
-    # Act
-    result = manager.reverse_flatfield_channels()
-
-    # Assert
-    assert result == expected_output, f"Test {test_id} failed: {result} != {expected_output}"
-
-@pytest.mark.parametrize("test_id, flatfield_channels, expected_exception", error_cases_data)
-def test_reverse_flatfield_channels_error_cases(test_id, flatfield_channels, mock_conn, expected_exception):
-    # Arrange
-    manager = FlatfieldMaskManager(omero_data, mock_conn)
-
-    # Act / Assert
-    with pytest.raises(expected_exception) as exc_info:
-        manager.flatfield_channels = flatfield_channels
-        manager.reverse_flatfield_channels()
-
-    # Optionally, assert on the exception message if you want to ensure it's specific enough
-    assert "flatfield_channels must be a dictionary" in str(exc_info.value)
-
-
 def test_flatfieldmask_succes(mock_conn):
     manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_channels = {'channel_1': 'DAPI', 'channel_2': 'Tub'}
-    omero_data.channel_data = {'DAPI': '1', 'Tub': '2'}
+    manager._flatfield_channels = {"channel_1": "DAPI", "channel_2": "Tub"}
+    omero_data.channel_data = {"DAPI": "1", "Tub": "2"}
     manager._check_flatfieldmask()
+
 
 def test_flatfieldmask_failue(mock_conn):
     manager = FlatfieldMaskManager(omero_data, mock_conn)
-    manager.flatfield_channels = {'channel_1': 'DAPI', 'channel_2': 'EdU'}
-    omero_data.channel_data = {'DAPI': '1', 'Tub': '2'}
+    manager._flatfield_channels = {"channel_1": "DAPI", "channel_2": "EdU"}
+    omero_data.channel_data = {"DAPI": "1", "Tub": "2"}
     with pytest.raises(ValueError) as exc_info:
         manager._check_flatfieldmask()
-    assert "Inconsistency found: flatfield_mask and plate_map have different channels" in str(exc_info.value)
+    assert (
+        "Inconsistency found: flatfield_mask and plate_map have different channels"
+        in str(exc_info.value)
+    )
+
+
+# __________________________TESTING INTENSITY SCALE MANAGER________________________________
+
+
+# test _extract_and_assign_values
+@pytest.fixture
+def lf_nucleus():
+    return pl.LazyFrame(
+        {
+            "Image": ["Image1", "Image2", "Image3"],
+            "intensity_max_DAPI_nucleus": [100, 200, 300],
+            "intensity_min_DAPI_nucleus": [10, 20, 30],
+            "intensity_max_p21_nucleus": [200, 300, 400],
+            "intensity_min_p21_nucleus": [20, 30, 30],
+        }
+    )
+
+
+@pytest.fixture
+def lf_cell():
+    return pl.LazyFrame(
+        {
+            "Image": ["Image1", "Image2", "Image3"],
+            "intensity_max_DAPI_nucleus": [100, 200, 300],
+            "intensity_min_DAPI_nucleus": [10, 20, 30],
+            "intensity_max_DAPI_cell": [200, 300, 400],
+            "intensity_min_DAPI_cell": [20, 30, 40],
+            "intensity_max_p21_cell": [300, 400, 500],
+            "intensity_min_p21_cell": [30, 40, 50],
+            "intensity_max_p21_nucleus": [200, 300, 300],
+            "intensity_min_p21_nucleus": [20, 30, 30],
+        }
+    )
+
+
+@pytest.fixture
+def lf_wron_col():
+    return pl.LazyFrame(
+        {
+            "Image": ["Image1", "Image2", "Image3"],
+            "intensity_nucleus": [100, 200, 300],
+            "intensity_min_nucleus": [10, 20, 30],
+        }
+    )
+
+
+@pytest.fixture
+def lf_none():
+    return pl.LazyFrame(
+        {
+            "Image": ["Image1", "Image2", "Image3"],
+        }
+    )
+
+
+def test_set_keyword_nucleus(lf_nucleus):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._plate_data = lf_nucleus
+    manager._set_keyword()
+    assert (
+        manager.keyword == "_nucleus"
+    ), "The keyword has not been set to '_nucleus'"
+
+
+def test_set_keyword_cell(lf_cell):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._plate_data = lf_cell
+    manager._set_keyword()
+    assert (
+        manager.keyword == "_cell"
+    ), "The keyword has not been set to '_cell'"
+
+
+def test_set_keyword_none(lf_none):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._plate_data = lf_none
+    with pytest.raises(ValueError) as exc_info:
+        manager._set_keyword()
+    assert (
+        "Neither '_cell' nor '_nucleus' is present in the dataframe columns."
+        in str(exc_info.value)
+    )
+
+
+def test_set_keyword_noframe(lf_none):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._plate_data = None
+    with pytest.raises(ValueError) as exc_info:
+        manager._set_keyword()
+    assert "Dataframe 'plate_data' does not exist." in str(exc_info.value)
+
+
+def test_get_values_nucleus(lf_nucleus):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._omero_data.channel_data = {"DAPI": "1", "p21": "2"}
+    manager._plate_data = lf_nucleus
+    manager.keyword = "_nucleus"
+    manager._get_values()
+    assert manager._intensities == {
+        "DAPI": (10, 200),
+        "p21": (20, 300),
+    }, "The max_values dictionary does not match the expected values."
+
+
+def test_get_values_cell(lf_cell):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._omero_data.channel_data = {"DAPI": "1", "p21": "2"}
+    manager._plate_data = lf_nucleus
+    manager.keyword = "_cell"
+    manager._get_values()
+    assert manager._intensities == {
+        "DAPI": (20, 300),
+        "p21": (20, 300),
+    }, "The max_values dictionary does not match the expected values."
+
+
+def test_get_values_wrong_col(lf_wron_col):
+    manager = ScaleIntensityManager(MagicMock())
+    manager._omero_data.channel_data = {"DAPI": "1", "p21": "2"}
+    manager._plate_data = lf_wron_col
+    manager.keyword = "_nucleus"
+    with pytest.raises(ValueError) as exc_info:
+        manager._get_values()
+    assert (
+        "Column 'intensity_max_DAPI_nucleus' not found in DataFrame."
+        in str(exc_info.value)
+    )
