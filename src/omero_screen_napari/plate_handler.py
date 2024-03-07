@@ -56,6 +56,10 @@ def retrieve_data(
         csv_manager.handle_csv()
         channel_manager = ChannelDataManager(omero_data, plate)
         channel_manager.get_channel_data()
+        flatfield_manager = FlatfieldMaskManager(omero_data, conn)
+        flatfield_manager.get_flatfieldmask()
+        scale_intensity_manager = ScaleIntensityManager(omero_data)
+        scale_intensity_manager.get_intensities()
 
 
 # -----------------------------------------------CSV FILE -----------------------------------------------------
@@ -93,7 +97,8 @@ class CsvFileManager:
             logger.info(
                 "CSV file already exists in local directory. Skipping download."
             )
-        omero_data.plate_data = pl.scan_csv(self._omero_data.csv_path)
+        omero_data.plate_data = pl.scan_csv(self._csv_file_path)
+        omero_data.csv_path = self._csv_file_path
 
     # helper functions for csv handling
 
@@ -113,23 +118,24 @@ class CsvFileManager:
         """
         Get the csv file from the Omero Plate, prioritizing '_cc.csv' files over 'final_data.csv' files.
         """
-        self.original_file = None
-
+        self._original_file = None
         file_anns = self._plate.listAnnotations()
         for ann in file_anns:
             if isinstance(ann, FileAnnotationWrapper):
-                self._file_name = ann.getFile().getName()
-                if self._file_name.endswith("_cc.csv"):
-                    self.original_file = ann.getFile()
+                name = ann.getFile().getName()
+                if name.endswith("_cc.csv"):
+                    self._file_name = name
+                    self._original_file = ann.getFile()
                     break  # Prioritize and stop searching if _cc.csv is found
                 elif (
-                    self._file_name.endswith("final_data.csv")
-                    and self.original_file is None
+                    name.endswith("final_data.csv")
+                    and self._original_file is None
                 ):
-                    self.original_file = ann.getFile()
+                    self._file_name = name
+                    self._original_file = ann.getFile()
                     # Don't break to continue searching for a _cc.csv file
 
-        if self.original_file is None:
+        if self._original_file is None:
             logger.error("No suitable csv file found for the plate.")
             raise ValueError("No suitable csv file found for the plate.")
 
@@ -140,9 +146,9 @@ class CsvFileManager:
         """
         saved_name = f"{self._plate_id}_{self._file_name.split('_')[-1]}"
         logger.info(f"Downloading csv file {self._file_name} to {saved_name}")  # noqa: G004
-        self._omero_data.csv_path = self._csv_file_path / saved_name
-        file_content = self.original_file.getFileInChunks()
-        with open(self._omero_data._csv_path, "wb") as file_on_disk:
+        self._csv_file_path = self._data_path / saved_name
+        file_content = self._original_file.getFileInChunks()
+        with open(self._csv_file_path, "wb") as file_on_disk:
             for chunk in file_content:
                 file_on_disk.write(chunk)
 
@@ -231,8 +237,8 @@ class ChannelDataManager:
 
 class FlatfieldMaskManager:
     def __init__(self, omero_data: OmeroData, conn: BlitzGateway):
-        self._omero_data = omero_data
-        self._conn = conn
+        self._omero_data: OmeroData = omero_data
+        self._conn: BlitzGateway = conn
 
     def get_flatfieldmask(self):
         self._load_dataset()
@@ -357,9 +363,10 @@ class ScaleIntensityManager:
     omero_data.plate_data.
     """
 
-    def __init__(self, omero_data):
+    def __init__(self, omero_data: OmeroData):
         self._omero_data = omero_data
         self._plate_data: pl.LazyFrame = omero_data.plate_data
+        self._keyword: str = None
         self._intensities: Tuple[dict] = ({}, {})
 
     def get_intensities(self):
@@ -368,11 +375,11 @@ class ScaleIntensityManager:
         self._omero_data.intensities = self._intensities
 
     def _set_keyword(self):
-        if not hasattr(self, "plate_data") or self._plate_data is None:
+        if not hasattr(self, "_plate_data") or self._plate_data is None:
             raise ValueError("Dataframe 'plate_data' does not exist.")
 
         # Initialize keyword to None
-        self.keyword = None
+        self._keyword = None
 
         # Check for presence of "_cell" and "_nucleus" in the list of strings
         has_cell = any("_cell" in s for s in self._plate_data.columns)
@@ -380,9 +387,9 @@ class ScaleIntensityManager:
 
         # Set keyword based on presence of "_cell" or "_nucleus"
         if has_cell:
-            self.keyword = "_cell"
+            self._keyword = "_cell"
         elif has_nucleus:
-            self.keyword = "_nucleus"
+            self._keyword = "_nucleus"
         else:
             # If neither is found, raise an exception
             raise ValueError(
@@ -396,8 +403,8 @@ class ScaleIntensityManager:
         intensity_dict = {}
         for channel, _value in self._omero_data.channel_data.items():
             cols = (
-                f"intensity_max_{channel}{self.keyword}",
-                f"intensity_min_{channel}{self.keyword}",
+                f"intensity_max_{channel}{self._keyword}",
+                f"intensity_min_{channel}{self._keyword}",
             )
             for col in cols:
                 if col not in self._plate_data.columns:
@@ -422,35 +429,35 @@ class ScaleIntensityManager:
 # -----------------------------------------------PIXEL SIZE -----------------------------------------------------
 
 
-# class PixelSizeManager:
-#     """
-#     The class extracts the pixel size from the plate metadata. For this purpose it uses the first well and image
-#     to extract the pixel size in X and Y dimensions. The pixel size is then stored in the omero_data class.
-#     """
+class PixelSizeManager:
+    """
+    The class extracts the pixel size from the plate metadata. For this purpose it uses the first well and image
+    to extract the pixel size in X and Y dimensions. The pixel size is then stored in the omero_data class.
+    """
 
-#     def __init__(
-#         self, omero_data: OmeroData, plate: omero.gateway.PlateWrapper
-#     ):
-#         self._omero_data = omero_data
-#         self._plate = plate
+    def __init__(
+        self, omero_data: OmeroData, plate: omero.gateway.PlateWrapper
+    ):
+        self._omero_data = omero_data
+        self._plate = plate
 
-#     def _check_wells_and_images(self):
-#         """
-#         Check if any wells are found in the plate and if each well has images.
-#         Extract the first image of two random wells.
-#         """
-#         wells = list(self.plate.listChildren())
-#         if not wells:
-#             logger.debug("No wells found in the plate, raising ValueError.")
-#             raise ValueError("No wells found in the plate.")
-#         self._random_wells = random.sample(wells, 2)
-
-#         image = well.getImage(0)
-#         if image is None:
-#             logger.debug(
-#                 "No images found in the first well, raising ValueError."
-#             )
-#             raise ValueError("No images found in the first well.")
+    def _check_wells_and_images(self):
+        """
+        Check if any wells are found in the plate and if each well has images.
+        Extract the first image of two random wells.
+        """
+        wells = list(self._plate.listChildren())
+        if not wells:
+            logger.debug("No wells found in the plate, raising ValueError.")
+            raise ValueError("No wells found in the plate.")
+        self._random_wells = random.sample(wells, 2)
+        image_list = [well.getImage(0) for well in self._random_wells]
+        if image_list is None:
+            logger.error(
+                "No images found in the first well, raising ValueError."
+            )
+            raise ValueError("No images found in the first well.")
+        self._random_images = image_list
 
 #     def get_pixel_size(self):
 #         """

@@ -16,7 +16,7 @@ from omero_screen_napari.plate_handler import (
 
 
 class MockPlate:
-    def __init__(self, file_names, map_annotations=None):
+    def __init__(self, file_names, map_annotations=None, wells_count=0):
         """
         Initializes the mock plate with a list of file names to simulate file annotations
         and an optional list of tuples to simulate map annotations.
@@ -25,6 +25,7 @@ class MockPlate:
         """
         self.file_names = file_names
         self.map_annotations = map_annotations or []
+        self.wells_count = wells_count
 
     def listAnnotations(self):
         """
@@ -46,19 +47,63 @@ class MockPlate:
             map_ann_wrapper.getValue.return_value = map_ann
             yield map_ann_wrapper
 
+    def listChildren(self):
+        """
+        Simulates the listChildren method of a Plate, yielding mock well objects.
+        """
+        for _ in range(self.wells_count):
+            yield MockWell()
+
 
 @pytest.fixture
 def mock_plate():
-    def _mock_plate(file_names, map_annotations=None):
-        return MockPlate(file_names, map_annotations)
+    def _mock_plate(file_names, map_annotations=None, wells_count=0):
+        return MockPlate(file_names, map_annotations, wells_count)
 
     return _mock_plate
+class MockWell:
+    def __init__(self):
+        """
+        Initializes a mock well object.
+        """
+        self.images = [MagicMock(name=f'MockImage{i}') for i in range(5)]  # Assuming 5 mock images per well for example
+
+    def getImage(self, index):
+        """
+        Returns a mock object simulating an image based on the index.
+        """
+        try:
+            return self.images[index]
+        except IndexError as e:
+            raise ValueError("Image index out of range") from e 
+
+class MockImage:
+    """
+    Mock to supply images for testing the listChidlren method of the Omero DatasetWrapper.
+    """
+
+    def __init__(self, name):
+        self._name = name
+
+    def getName(self):
+        return self._name
+
+    def getId(self):
+        return (
+            "mock_id"  # Return a mock ID or vary this as needed for your tests
+        )
 
 
+@pytest.fixture
+def mock_image():
+    # This fixture creates a single MockImage instance
+    name = "default_name"
+    return MockImage(name)
 @pytest.fixture
 def mock_omero_data():
     mock_data = MagicMock(spec=OmeroData)
     mock_data.plate_id = 123
+    mock_data.data_path = "/path/to/data"
     mock_data.csv_path = "/path/to/csv"
     return mock_data
 
@@ -116,28 +161,7 @@ def mock_conn():
     return _create_mock_conn
 
 
-class MockImage:
-    """
-    Mock to supply images for testing the listChidlren method of the Omero DatasetWrapper.
-    """
 
-    def __init__(self, name):
-        self._name = name
-
-    def getName(self):
-        return self._name
-
-    def getId(self):
-        return (
-            "mock_id"  # Return a mock ID or vary this as needed for your tests
-        )
-
-
-@pytest.fixture
-def mock_image():
-    # This fixture creates a single MockImage instance
-    name = "default_name"
-    return MockImage(name)
 
 
 @pytest.fixture
@@ -181,8 +205,8 @@ def csv_manager_with_mocked_file(mock_omero_data, tmp_path):
     handler = CsvFileManager(mock_omero_data, mock_plate)
 
     # Mock the original_file and csv_path attributes
-    handler.original_file = mock_original_file
-    handler.csv_path = tmp_path
+    handler._original_file = mock_original_file
+    handler._data_path = tmp_path
     handler._file_name = "example_final_data.csv"
 
     return handler

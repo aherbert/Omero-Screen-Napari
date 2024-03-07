@@ -7,10 +7,11 @@ import pytest
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.plate_handler import (
-    CsvFileManager,
     ChannelDataManager,
+    CsvFileManager,
     FlatfieldMaskManager,
     ScaleIntensityManager,
+    PixelSizeManager
 )
 
 
@@ -60,18 +61,20 @@ def test_csv_unvailable_when_file_exists(tmp_path, mock_omero_data):
     ],
 )
 def test_get_csv_file_success(
-    csv_manager, mock_plate, file_names, expected_file_name
+    mock_omero_data, mock_plate, file_names, expected_file_name
 ):
-    csv_manager.plate = mock_plate(file_names)
+    csv_manager = CsvFileManager(mock_omero_data, MagicMock())
+    csv_manager._plate = mock_plate(file_names)
     csv_manager._get_csv_file()
-    actual_file_name = csv_manager.original_file.getName()
+    actual_file_name = csv_manager._original_file.getName()
     assert (
         actual_file_name == expected_file_name
-    ), f"Expected file '{expected_file_name}', but got '{actual_file_name}'."
+    ), f"Expected file {expected_file_name}, but got '{actual_file_name}'."
 
 
-def test_get_csv_file_failure(csv_manager, mock_plate, mock_omero_data):
+def test_get_csv_file_failure(mock_plate, mock_omero_data):
     file_names = ["not_relevant_file1.csv", "not_relevant_file2.csv"]
+    csv_manager = CsvFileManager(mock_omero_data, MagicMock())
     csv_manager.plate = mock_plate(file_names)
     with pytest.raises(ValueError) as exc_info:
         csv_manager._get_csv_file()
@@ -82,7 +85,9 @@ def test_get_csv_file_failure(csv_manager, mock_plate, mock_omero_data):
 
 def test_download_csv(csv_manager_with_mocked_file):
     # Given
-    expected_file_path = csv_manager_with_mocked_file.csv_path / "123_data.csv"
+    expected_file_path = (
+        csv_manager_with_mocked_file._data_path / "123_data.csv"
+    )
     # When
     csv_manager_with_mocked_file._download_csv()
     # Then
@@ -424,7 +429,7 @@ def test_set_keyword_nucleus(lf_nucleus):
     manager._plate_data = lf_nucleus
     manager._set_keyword()
     assert (
-        manager.keyword == "_nucleus"
+        manager._keyword == "_nucleus"
     ), "The keyword has not been set to '_nucleus'"
 
 
@@ -433,7 +438,7 @@ def test_set_keyword_cell(lf_cell):
     manager._plate_data = lf_cell
     manager._set_keyword()
     assert (
-        manager.keyword == "_cell"
+        manager._keyword == "_cell"
     ), "The keyword has not been set to '_cell'"
 
 
@@ -460,7 +465,7 @@ def test_get_values_nucleus(lf_nucleus):
     manager = ScaleIntensityManager(MagicMock())
     manager._omero_data.channel_data = {"DAPI": "1", "p21": "2"}
     manager._plate_data = lf_nucleus
-    manager.keyword = "_nucleus"
+    manager._keyword = "_nucleus"
     manager._get_values()
     assert manager._intensities == {
         "DAPI": (10, 200),
@@ -471,12 +476,12 @@ def test_get_values_nucleus(lf_nucleus):
 def test_get_values_cell(lf_cell):
     manager = ScaleIntensityManager(MagicMock())
     manager._omero_data.channel_data = {"DAPI": "1", "p21": "2"}
-    manager._plate_data = lf_nucleus
-    manager.keyword = "_cell"
+    manager._plate_data = lf_cell
+    manager._keyword = "_cell"
     manager._get_values()
     assert manager._intensities == {
         "DAPI": (20, 300),
-        "p21": (20, 300),
+        "p21": (30, 400),
     }, "The max_values dictionary does not match the expected values."
 
 
@@ -484,10 +489,20 @@ def test_get_values_wrong_col(lf_wron_col):
     manager = ScaleIntensityManager(MagicMock())
     manager._omero_data.channel_data = {"DAPI": "1", "p21": "2"}
     manager._plate_data = lf_wron_col
-    manager.keyword = "_nucleus"
+    manager._keyword = "_nucleus"
     with pytest.raises(ValueError) as exc_info:
         manager._get_values()
     assert (
         "Column 'intensity_max_DAPI_nucleus' not found in DataFrame."
         in str(exc_info.value)
     )
+# __________________________TESTING PIXEL SIZE MANAGER________________________________
+
+
+def test_check_wells_and_images_with_wells(mock_plate):
+    mock_plate = mock_plate(['mock1'], wells_count=4)
+    manager = PixelSizeManager(MagicMock(), mock_plate)
+    manager._check_wells_and_images()
+    assert len(manager._random_wells) == 2
+    assert len(manager._random_images) == 2
+
