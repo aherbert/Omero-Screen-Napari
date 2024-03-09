@@ -16,7 +16,7 @@ from omero_screen_napari.plate_handler import (
 
 
 class MockPlate:
-    def __init__(self, file_names, map_annotations=None, wells_count=0):
+    def __init__(self, file_names, map_annotations=None, wells_count=0, img_number=5):
         """
         Initializes the mock plate with a list of file names to simulate file annotations
         and an optional list of tuples to simulate map annotations.
@@ -26,6 +26,7 @@ class MockPlate:
         self.file_names = file_names
         self.map_annotations = map_annotations or []
         self.wells_count = wells_count
+        self.image_count = img_number
 
     def listAnnotations(self):
         """
@@ -52,21 +53,22 @@ class MockPlate:
         Simulates the listChildren method of a Plate, yielding mock well objects.
         """
         for _ in range(self.wells_count):
-            yield MockWell()
+            yield MockWell(self.image_count)
 
 
 @pytest.fixture
 def mock_plate():
-    def _mock_plate(file_names, map_annotations=None, wells_count=0):
-        return MockPlate(file_names, map_annotations, wells_count)
+    def _mock_plate(file_names, map_annotations=None, wells_count=0, img_number=5):
+        return MockPlate(file_names, map_annotations, wells_count, img_number)
 
     return _mock_plate
 class MockWell:
-    def __init__(self):
+    def __init__(self, img_number):
         """
         Initializes a mock well object.
         """
-        self.images = [MagicMock(name=f'MockImage{i}') for i in range(5)]  # Assuming 5 mock images per well for example
+        self.img_number = img_number
+        self.images = [MagicMock(name=f'MockImage{i}') for i in range(img_number)]  # Assuming 5 mock images per well for example
 
     def getImage(self, index):
         """
@@ -74,9 +76,8 @@ class MockWell:
         """
         try:
             return self.images[index]
-        except IndexError as e:
-            raise ValueError("Image index out of range") from e 
-
+        except Exception as e:
+            raise e
 class MockImage:
     """
     Mock to supply images for testing the listChidlren method of the Omero DatasetWrapper.

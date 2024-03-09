@@ -3,8 +3,6 @@ import random
 from pathlib import Path
 from typing import List, Tuple
 
-import napari
-import numpy as np
 import omero
 import polars as pl
 from ezomero import get_image
@@ -440,6 +438,14 @@ class PixelSizeManager:
     ):
         self._omero_data = omero_data
         self._plate = plate
+        self._random_wells: List = None
+        self._random_images: List = None
+        self._pixel_size: Tuple[int] = None
+
+    def get_pixel_size_values(self):
+        self._check_wells_and_images()
+        self._check_pixel_values()
+        self._omero_data.pixel_size = self._pixel_size
 
     def _check_wells_and_images(self):
         """
@@ -451,96 +457,50 @@ class PixelSizeManager:
             logger.debug("No wells found in the plate, raising ValueError.")
             raise ValueError("No wells found in the plate.")
         self._random_wells = random.sample(wells, 2)
-        image_list = [well.getImage(0) for well in self._random_wells]
-        if image_list is None:
-            logger.error(
-                "No images found in the first well, raising ValueError."
-            )
-            raise ValueError("No images found in the first well.")
+        image_list = []
+        for i, well in enumerate(self._random_wells):
+            try:
+                image = well.getImage(0)  # Attempt to get the first image
+                image_list.append(image)
+            except Exception as e:  # Catches any exception raised by getImage(0)  # noqa: BLE001
+                logger.error(f"Unable to retrieve image from well {i}: {e}")
+                raise ValueError(
+                    f"Unable to retrieve image from well {i}: {e}"
+                ) from e
+
         self._random_images = image_list
 
-#     def get_pixel_size(self):
-#         """
-#         Get the pixel size from the plate metadata.
-#         """
-#         try:
-#             wells = list(self.plate.listChildren())
-#             if not wells:
-#                 logger.debug(
-#                     "No wells found in the plate, raising ValueError."
-#                 )
-#                 raise ValueError("No wells found in the plate.")
+    def _get_pixel_values(self, image) -> tuple:
+        """
+        Get pixel values from a single OMERO image object.
+        Returns a tuple of floats for x, y values.
+        """
+        x_size = image.getPixelSizeX()
+        y_size = image.getPixelSizeY()
 
-#             well = wells[0]
-#             image = well.getImage(0)
-#             if image is None:
-#                 logger.debug(
-#                     "No images found in the first well, raising ValueError."
-#                 )
-#                 raise ValueError("No images found in the first well.")
+        # Check if either x_size or y_size is None before rounding
+        if x_size is None or y_size is None:
+            logger.error(
+                "No pixel data found for the image, raising ValueError."
+            )
+            raise ValueError("No pixel data found for the image.")
 
-#             pixels = image.getPrimaryPixels()
-#             if pixels is None:
-#                 logger.debug(
-#                     "No pixel data found for the image, raising ValueError."
-#                 )
-#                 raise ValueError("No pixel data found for the image.")
+        # Since both values are not None, proceed to round them
+        return (round(x_size, 1), round(y_size, 1))
 
-#             pixel_size_x, pixel_size_y = (
-#                 pixels.getPhysicalSizeX(),
-#                 pixels.getPhysicalSizeY(),
-#             )
-#             logger.info(
-#                 f"Retrieved pixel sizes: X={pixel_size_x}, Y={pixel_size_y}"
-#             )  # noqa: G004
-#             self.omero_data.pixel_size = (pixel_size_x, pixel_size_y)
-#         except Exception as e:
-#             # Log with exception details at retrieve data to show message as widget
-#             raise
-
-
-# def _get_pixel_size(plate: omero.gateway.PlateWrapper) -> tuple:
-#     """
-#     Get the pixel size from the plate metadata.
-
-#     Args:
-#         plate: The plate object.
-
-#     Returns:
-#         A tuple containing the physical size in X and Y dimensions.
-
-#     Raises:
-#         ValueError: If no wells or images are found in the plate.
-#     """
-#     try:
-#         wells = list(plate.listChildren())
-#         if not wells:
-#             logger.debug("No wells found in the plate, raising ValueError.")
-#             raise ValueError("No wells found in the plate.")
-
-#         well = wells[0]
-#         image = well.getImage(0)
-#         if image is None:
-#             logger.debug(
-#                 "No images found in the first well, raising ValueError."
-#             )
-#             raise ValueError("No images found in the first well.")
-
-#         pixels = image.getPrimaryPixels()
-#         if pixels is None:
-#             logger.debug(
-#                 "No pixel data found for the image, raising ValueError."
-#             )
-#             raise ValueError("No pixel data found for the image.")
-
-#         pixel_size_x, pixel_size_y = (
-#             pixels.getPhysicalSizeX(),
-#             pixels.getPhysicalSizeY(),
-#         )
-#         logger.info(
-#             f"Retrieved pixel sizes: X={pixel_size_x}, Y={pixel_size_y}"
-#         )  # noqa: G004
-#         return pixel_size_x, pixel_size_y
-#     except Exception as e:
-#         # Log with exception details at retrieve data to show message as widget
-#         raise
+    def _check_pixel_values(self):
+        """
+        Check if pixel values from the two random images are identical and not 0
+        and load the pixel size tuple to the omero_data class.
+        """
+        pixel_well_1 = self._get_pixel_values(self._random_images[0])
+        pixel_well_2 = self._get_pixel_values(self._random_images[1])
+    
+        if 0 in pixel_well_1 + pixel_well_2:
+            logger.error("One of the pixel sizes is 0")
+            raise ValueError("One of the pixel sizes is 0")
+        elif pixel_well_1 == pixel_well_2:
+            self._pixel_size = pixel_well_1
+        else:
+            logger.error("Pixel sizes are not identical between wells")
+            raise ValueError("Pixel sizes are not identical between wells")

@@ -10,7 +10,8 @@ from omero_screen_napari.plate_handler import (
     CsvFileManager,
     ChannelDataManager,
     FlatfieldMaskManager,
-    ScaleIntensityManager
+    ScaleIntensityManager,
+    PixelSizeManager
 ) 
 from omero_screen_napari._omero_utils import omero_connect  # noqa: E402, I001
 from omero_screen_napari.omero_data_singleton import omero_data  # noqa: E402, I001
@@ -39,12 +40,14 @@ def test_csv_download(cleanup_csv_directory, conn=None):
     plate = conn.getObject("Plate", 53)
     assert plate is not None, "Failed to retrieve plate object."
     csv_manager = CsvFileManager(omero_data, plate)
-    csv_manager.csv_path = cleanup_csv_directory
+    csv_manager._data_path = cleanup_csv_directory
     csv_manager.handle_csv()
-    df = pl.read_csv(csv_manager.csv_path / "53_cc.csv")
+    df = pl.read_csv(csv_manager._csv_file_path)
     assert len(df) == 1006
+    assert str(omero_data.csv_path).endswith('test_csv_download0/53_cc.csv')
 
 
+    
 @omero_connect
 def test_channel_data_manager(conn=None):
     """
@@ -132,4 +135,15 @@ def test_scale_intensity_manager(cleanup_csv_directory, conn=None):
     manager = ScaleIntensityManager(omero_data)
     manager.get_intensities()
     assert {'DAPI': (280, 15378), 'Tub': (3696, 20275), 'p21': (2006, 4373), 'EdU': (236, 4728)} == omero_data.intensities
-    
+
+@omero_connect
+def test_pixel_size_manager(conn=None):
+    """
+    Test the pixel size manager
+    """
+    omero_data.reset()
+    omero_data.plate_id = 53
+    plate = conn.getObject("Plate", 53)
+    pixel_manager = PixelSizeManager(omero_data, plate)
+    pixel_manager.get_pixel_size_values()
+    assert omero_data.pixel_size == (1.2, 1.2), "Failed to retrieve pixel size"

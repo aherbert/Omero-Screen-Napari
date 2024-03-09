@@ -11,7 +11,7 @@ from omero_screen_napari.plate_handler import (
     CsvFileManager,
     FlatfieldMaskManager,
     ScaleIntensityManager,
-    PixelSizeManager
+    PixelSizeManager,
 )
 
 
@@ -496,13 +496,81 @@ def test_get_values_wrong_col(lf_wron_col):
         "Column 'intensity_max_DAPI_nucleus' not found in DataFrame."
         in str(exc_info.value)
     )
+
+
 # __________________________TESTING PIXEL SIZE MANAGER________________________________
 
 
 def test_check_wells_and_images_with_wells(mock_plate):
-    mock_plate = mock_plate(['mock1'], wells_count=4)
+    mock_plate = mock_plate(["mock1"], wells_count=4, img_number=5)
     manager = PixelSizeManager(MagicMock(), mock_plate)
     manager._check_wells_and_images()
     assert len(manager._random_wells) == 2
     assert len(manager._random_images) == 2
 
+
+def test_check_wells_and_images_without_wells(mock_plate):
+    mock_plate = mock_plate(["mock1"], wells_count=0, img_number=5)
+    manager = PixelSizeManager(MagicMock(), mock_plate)
+    with pytest.raises(ValueError) as exc_info:
+        manager._check_wells_and_images()
+    assert "No wells found in the plate." in str(exc_info.value)
+
+
+def test_check_wells_and_images_without_images(mock_plate):
+    mock_plate = mock_plate(["mock1"], wells_count=5, img_number=0)
+    manager = PixelSizeManager(MagicMock(), mock_plate)
+    with pytest.raises(Exception) as exc_info:
+        manager._check_wells_and_images()
+    assert "Unable to retrieve image from well" in str(exc_info.value)
+
+
+def test_get_pixel_values():
+    # Setup a mock image object with getPrimaryPixels returning None
+    mock_image = MagicMock()
+    mock_image.getPixelSizeX.return_value = 1.19
+    mock_image.getPixelSizeY.return_value = 1.19
+    manager = PixelSizeManager(MagicMock(), MagicMock())
+    (x, y) = manager._get_pixel_values(mock_image)
+    assert (x, y) == (1.2, 1.2)
+
+
+def test_get_pixel_values_raises_value_error_on_none():
+    # Setup a mock image object with getPrimaryPixels returning None
+    mock_image = MagicMock()
+    mock_image.getPixelSizeX.return_value = None
+    mock_image.getPixelSizeY.return_value = None
+    manager = PixelSizeManager(MagicMock(), MagicMock())
+    # Assert that ValueError is raised when pixels are None
+    with pytest.raises(ValueError) as exc_info:
+        manager._get_pixel_values(mock_image)
+    assert "No pixel data found for the image." in str(exc_info.value)
+
+@patch('omero_screen_napari.plate_handler.PixelSizeManager._get_pixel_values')
+def test_check_pixel_values(mock_get_pixel_values, mock_omero_data):
+    # Setup a mock image object with getPrimaryPixels returning None
+    mock_get_pixel_values.return_value = (1, 1)
+    manager = PixelSizeManager(mock_omero_data, MagicMock())
+    manager._random_images = [MagicMock(), MagicMock()]
+    manager._check_pixel_values()
+    assert manager._pixel_size == (1, 1)
+
+@patch('omero_screen_napari.plate_handler.PixelSizeManager._get_pixel_values')
+def test_check_pixel_values_zero(mock_get_pixel_values, mock_omero_data):
+    # Setup a mock image object with getPrimaryPixels returning None
+    mock_get_pixel_values.side_effect = [(0, 1), (1, 1)]
+    manager = PixelSizeManager(mock_omero_data, MagicMock())
+    manager._random_images = [MagicMock(), MagicMock()]
+    with pytest.raises(ValueError) as exc_info:
+        manager._check_pixel_values()
+    assert "One of the pixel sizes is 0" in str(exc_info.value)
+
+@patch('omero_screen_napari.plate_handler.PixelSizeManager._get_pixel_values')
+def test_check_pixel_values_unequal(mock_get_pixel_values, mock_omero_data):
+    # Setup a mock image object with getPrimaryPixels returning None
+    mock_get_pixel_values.side_effect = [(2, 1), (1, 1)]
+    manager = PixelSizeManager(mock_omero_data, MagicMock())
+    manager._random_images = [MagicMock(), MagicMock()]
+    with pytest.raises(ValueError) as exc_info:
+        manager._check_pixel_values()
+    assert "Pixel sizes are not identical between wells" in str(exc_info.value)
