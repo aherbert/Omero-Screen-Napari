@@ -1,5 +1,6 @@
 from omero_screen_napari.omero_data import OmeroData
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -15,6 +16,12 @@ def test_omero_data_initialization_env1():
     expected_project_id = 151
     data = OmeroData()
     assert data.project_id == expected_project_id
+
+def test_data_path_initialization():
+    os.environ["USE_LOCAL_ENV"] = "0"
+    data = OmeroData()
+    expected_data_path = "omero-napari-data"
+    assert data.data_path == Path.home() / Path(expected_data_path)
 
 def test_reset_method():
     os.environ["USE_LOCAL_ENV"] = "0"

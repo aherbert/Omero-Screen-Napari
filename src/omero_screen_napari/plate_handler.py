@@ -27,15 +27,15 @@ logger = logging.getLogger("omero-screen-napari")
 
 
 @omero_connect
-def retrieve_data(
+def parse_pate_data(
     omero_data,
     plate_id: int,
     conn: BlitzGateway = None,
 ) -> None:
     """
     This functions controls the flow of the data
-    via the seperate handler classes to the omero_data class that stores image data and metadata
-    to be supplied to the viewer.
+    via the seperate parser classes to the omero_data class that stores omero plate metadata
+    to be supplied to the napari viewer.
     This function is passed to welldata_widget and supplied by parameters from the
     plugin gui.
     Args:
@@ -47,21 +47,35 @@ def retrieve_data(
     # check if plate-ID already supplied, if it is then skip PlateHandler
     if plate_id != omero_data.plate_id:
         reset_omero_data()
-        logger.info(f"Retrieving new plate data for plate {plate_id}")  # noqa: G004
-        omero_data.plate_id = plate_id
-        plate = conn.getObject("Plate", plate_id)
-        csv_manager = CsvFileManager(omero_data, plate)
-        csv_manager.handle_csv()
-        channel_manager = ChannelDataManager(omero_data, plate)
-        channel_manager.get_channel_data()
-        flatfield_manager = FlatfieldMaskManager(omero_data, conn)
-        flatfield_manager.get_flatfieldmask()
-        scale_intensity_manager = ScaleIntensityManager(omero_data)
-        scale_intensity_manager.get_intensities()
+        try:
+            logger.info(f"Retrieving new plate data for plate {plate_id}")  # noqa: G004
+            omero_data.plate_id = plate_id
+            plate = conn.getObject("Plate", plate_id)
+            csv_parser = CsvFileParser(omero_data, plate)
+            csv_parser.parse_csv()
+            channel_parser = ChannelDataParser(omero_data, plate)
+            channel_parser.parse_channel_data()
+            flatfield_parser = FlatfieldMaskParser(omero_data, conn)
+            flatfield_parser.parse_flatfieldmask()
+            scale_intensity_parser = ScaleIntensityParser(omero_data)
+            scale_intensity_parser.parse_intensities()
+            pixel_size_parser = PixelSizeParser(omero_data, plate)
+            pixel_size_parser.parse_pixel_size_values()
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error parsing plate data: {e}")
+            # # Show a message box with the error message
+            # msg_box = QMessageBox()
+            # msg_box.setIcon(QMessageBox.Warning)
+            # msg_box.setText(str(e))
+            # msg_box.setWindowTitle("Error")
+            # msg_box.setStandardButtons(QMessageBox.Ok)
+            # msg_box.exec_()
+    else:
+        logger.info(f"Plate data for plate {plate_id} already exists.")
 
 
 # -----------------------------------------------CSV FILE -----------------------------------------------------
-class CsvFileManager:
+class CsvFileParser:
     """
     Class to handle csv file retrieval and processing from Omero Plate
     Class methods:
@@ -82,7 +96,7 @@ class CsvFileManager:
         self._data_path: Path = omero_data.data_path
         self._csv_file_path: Path = None
 
-    def handle_csv(self):
+    def parse_csv(self):
         """Orchestrate the csv file handling. Check if csv file is available, if not download it.
         and make it available to the omero_data class as a polars LazyFrame object.
 
@@ -96,7 +110,7 @@ class CsvFileManager:
                 "CSV file already exists in local directory. Skipping download."
             )
         omero_data.plate_data = pl.scan_csv(self._csv_file_path)
-        omero_data.csv_path = self._csv_file_path
+        self._omero_data.csv_path = self._csv_file_path
 
     # helper functions for csv handling
 
@@ -104,13 +118,13 @@ class CsvFileManager:
         """
         Check if any csv file in the directory contains the string self.plate_id in its name.
         """
-        # TODO get filepath and generate attribute for platehandler class if file exists
         # make the directory to store the csv file if it does not exist
         self._data_path.mkdir(exist_ok=True)
         for file in self._data_path.iterdir():
             if file.is_file() and str(self._plate_id) in file.name:
                 self._csv_file_path = file
                 return True
+        
 
     def _get_csv_file(self):
         """
@@ -154,7 +168,7 @@ class CsvFileManager:
 # -----------------------------------------------CHANNEL DATA -----------------------------------------------------
 
 
-class ChannelDataManager:
+class ChannelDataParser:
     """
     Class to handle channel data retrieval and processing from Omero Plate.
     class methods:
@@ -169,7 +183,7 @@ class ChannelDataManager:
         self._plate = plate
         self._plate_id: int = omero_data.plate_id
 
-    def get_channel_data(self):
+    def parse_channel_data(self):
         """Process channel data to dictionary {channel_name: channel_index}
         and add it to viewer_data; raise exception if no channel data found."""
         self._get_map_ann()
@@ -233,12 +247,12 @@ class ChannelDataManager:
 # -----------------------------------------------FLATFIELD CORRECTION-----------------------------------------------------
 
 
-class FlatfieldMaskManager:
+class FlatfieldMaskParser:
     def __init__(self, omero_data: OmeroData, conn: BlitzGateway):
         self._omero_data: OmeroData = omero_data
         self._conn: BlitzGateway = conn
 
-    def get_flatfieldmask(self):
+    def parse_flatfieldmask(self):
         self._load_dataset()
         self._get_flatfieldmask()
         self._get_map_ann()
@@ -353,7 +367,7 @@ class FlatfieldMaskManager:
 # -----------------------------------------------SCALE INTENSITY -----------------------------------------------------
 
 
-class ScaleIntensityManager:
+class ScaleIntensityParser:
     """
     The class extracts the caling values for image contrasts to display the different channels in napari.
     To compare intesities across different wells a single global contrasting value is set. This is based on the
@@ -367,7 +381,7 @@ class ScaleIntensityManager:
         self._keyword: str = None
         self._intensities: Tuple[dict] = ({}, {})
 
-    def get_intensities(self):
+    def parse_intensities(self):
         self._set_keyword()
         self._get_values()
         self._omero_data.intensities = self._intensities
@@ -427,7 +441,7 @@ class ScaleIntensityManager:
 # -----------------------------------------------PIXEL SIZE -----------------------------------------------------
 
 
-class PixelSizeManager:
+class PixelSizeParser:
     """
     The class extracts the pixel size from the plate metadata. For this purpose it uses the first well and image
     to extract the pixel size in X and Y dimensions. The pixel size is then stored in the omero_data class.
@@ -442,7 +456,7 @@ class PixelSizeManager:
         self._random_images: List = None
         self._pixel_size: Tuple[int] = None
 
-    def get_pixel_size_values(self):
+    def parse_pixel_size_values(self):
         self._check_wells_and_images()
         self._check_pixel_values()
         self._omero_data.pixel_size = self._pixel_size
@@ -495,7 +509,7 @@ class PixelSizeManager:
         """
         pixel_well_1 = self._get_pixel_values(self._random_images[0])
         pixel_well_2 = self._get_pixel_values(self._random_images[1])
-    
+
         if 0 in pixel_well_1 + pixel_well_2:
             logger.error("One of the pixel sizes is 0")
             raise ValueError("One of the pixel sizes is 0")

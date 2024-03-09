@@ -9,14 +9,16 @@ from omero.gateway import (
 )
 
 from omero_screen_napari.plate_handler import (
-    ChannelDataManager,
-    CsvFileManager,
+    ChannelDataParser,
+    CsvFileParser,
     OmeroData,
 )
 
 
 class MockPlate:
-    def __init__(self, file_names, map_annotations=None, wells_count=0, img_number=5):
+    def __init__(
+        self, file_names, map_annotations=None, wells_count=0, img_number=5
+    ):
         """
         Initializes the mock plate with a list of file names to simulate file annotations
         and an optional list of tuples to simulate map annotations.
@@ -58,17 +60,23 @@ class MockPlate:
 
 @pytest.fixture
 def mock_plate():
-    def _mock_plate(file_names, map_annotations=None, wells_count=0, img_number=5):
+    def _mock_plate(
+        file_names, map_annotations=None, wells_count=0, img_number=5
+    ):
         return MockPlate(file_names, map_annotations, wells_count, img_number)
 
     return _mock_plate
+
+
 class MockWell:
     def __init__(self, img_number):
         """
         Initializes a mock well object.
         """
         self.img_number = img_number
-        self.images = [MagicMock(name=f'MockImage{i}') for i in range(img_number)]  # Assuming 5 mock images per well for example
+        self.images = [
+            MagicMock(name=f"MockImage{i}") for i in range(img_number)
+        ]  # Assuming 5 mock images per well for example
 
     def getImage(self, index):
         """
@@ -78,6 +86,8 @@ class MockWell:
             return self.images[index]
         except Exception as e:
             raise e
+
+
 class MockImage:
     """
     Mock to supply images for testing the listChidlren method of the Omero DatasetWrapper.
@@ -100,6 +110,8 @@ def mock_image():
     # This fixture creates a single MockImage instance
     name = "default_name"
     return MockImage(name)
+
+
 @pytest.fixture
 def mock_omero_data():
     mock_data = MagicMock(spec=OmeroData)
@@ -162,9 +174,6 @@ def mock_conn():
     return _create_mock_conn
 
 
-
-
-
 @pytest.fixture
 def mock_screen_dataset_factory():
     """Fixture factory to create a mock screen dataset with a dynamic list of children."""
@@ -182,13 +191,13 @@ def mock_screen_dataset_factory():
 @pytest.fixture
 def csv_manager(mock_omero_data, mock_plate):
     # This fixture now requires an additional parameter to specify file names
-    return CsvFileManager(omero_data=mock_omero_data, plate=mock_plate)
+    return CsvFileParser(omero_data=mock_omero_data, plate=mock_plate)
 
 
 @pytest.fixture
 def channel_manager(mock_omero_data, mock_plate):
     # This fixture now requires an additional parameter to specify file names
-    return ChannelDataManager(omero_data=mock_omero_data, plate=mock_plate)
+    return ChannelDataParser(omero_data=mock_omero_data, plate=mock_plate)
 
 
 @pytest.fixture
@@ -203,7 +212,7 @@ def csv_manager_with_mocked_file(mock_omero_data, tmp_path):
     file_names = ["not_relevant_file.csv", "final_data.csv"]
     mock_plate = MockPlate(file_names)
     # Instantiate your class
-    handler = CsvFileManager(mock_omero_data, mock_plate)
+    handler = CsvFileParser(mock_omero_data, mock_plate)
 
     # Mock the original_file and csv_path attributes
     handler._original_file = mock_original_file

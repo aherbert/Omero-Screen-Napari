@@ -1,7 +1,7 @@
 import logging
 import os
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from omero.gateway import _DatasetWrapper, _PlateWrapper, _WellWrapper
 
 from omero_screen_napari import set_env_vars
-
 
 logger = logging.getLogger("omero-screen-napari")
 
@@ -26,22 +25,30 @@ def get_project_id() -> int:
     logger.info(f"Loading environment variables from {dotenv_path}")  # noqa: G004
     return int(os.getenv("PROJECT_ID", default_project_id))
 
-def get_data_path() -> int:
+
+def get_data_path() -> Path:
     """_summary_
     Fetch data_path from the environment
     Returns:
         Path: path to folder that saves the csv data to avoid reloading from the server.
     """
-    default_data_path = '~/omero-napari-data'
-    return Path(os.getenv("PROJECT_ID", default_data_path))
+    default_data_path = "default_data_path"
+    dotenv_path = set_env_vars()
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+    return Path.home() / Path(os.getenv("DATA_PATH", default_data_path))
+
+
 @dataclass
 class OmeroData:
     """
     Dataclass to store all the data related to the omero project and plate.
     """
+
     # Screen data
     project_id: int = field(default_factory=get_project_id)
-    screen_dataset: _DatasetWrapper = field(default_factory=_DatasetWrapper) # dataset with flatfield masks and segementations
+    screen_dataset: _DatasetWrapper = field(
+        default_factory=_DatasetWrapper
+    )  # dataset with flatfield masks and segementations
     plate_id: int = field(default_factory=int)
     plate_name: str = field(default_factory=str)
     plate: _PlateWrapper = field(default_factory=_PlateWrapper)
@@ -64,7 +71,7 @@ class OmeroData:
     image_ids: list = field(default_factory=list)
     labels: np.ndarray = field(default_factory=lambda: np.empty((0,)))
     label_ids: list = field(default_factory=list)
-    
+
     # Stitched images
     stitched_images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
 
@@ -74,4 +81,3 @@ class OmeroData:
         This is used when reading in a new plate from napari.
         """
         self.__init__()
-
