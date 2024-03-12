@@ -27,7 +27,7 @@ logger = logging.getLogger("omero-screen-napari")
 
 
 @omero_connect
-def parse_pate_data(
+def parse_plate_data(
     omero_data,
     plate_id: int,
     conn: BlitzGateway = None,
@@ -124,7 +124,6 @@ class CsvFileParser:
             if file.is_file() and str(self._plate_id) in file.name:
                 self._csv_file_path = file
                 return True
-        
 
     def _get_csv_file(self):
         """
@@ -518,3 +517,103 @@ class PixelSizeParser:
         else:
             logger.error("Pixel sizes are not identical between wells")
             raise ValueError("Pixel sizes are not identical between wells")
+        
+#-----------------------------------------------Well Data-----------------------------------------------------
+
+
+class WellDataParser:
+    """
+    """
+    def __init__(self, omero_data: OmeroData, plate: omero.gateway.PlateWrapper, well_pos: str):
+        self._omero_data = omero_data
+        self._plate = plate
+        self._well_pos = well_pos
+        self._well = None
+        self._well_id = None
+        self._images = None
+
+    def parse_well(self): 
+        well_found = False  
+        for well in self._plate.listChildren():
+            if well.getWellPos() == self._well_pos:
+                self._well = well
+                self._well_id = well.getId()
+                well_found = True
+                break
+        if not well_found:
+            logger.error('f"Well with position {well_pos} does not exist."')  # Raise an error if the well was not found
+            raise ValueError(f"Well with position {self.well_pos} does not exist.")
+        
+    def parse_well_data(self):
+        self._load_well_specific_data()
+        self._get_well_metadata()
+        self._get_images()
+    def _get_well_object(viewer_data, conn, well_pos: str, index: int, images: str):
+    if well_pos not in viewer_data.well_name:
+        viewer_data.well_name.append(well_pos)
+        well_found = False  # Initialize a flag to check if the well is found
+        # get well object
+        for well in viewer_data.plate.listChildren():
+            if well.getWellPos() == well_pos:
+                viewer_data.well.append(well)
+                viewer_data.well_id.append(well.getId())
+                _load_well_specific_data(viewer_data, well_pos)
+                _get_well_metadata(viewer_data, index)
+                _get_images(viewer_data, images, index, conn)
+                well_found = (
+                    True  # Set the flag to True when the well is found
+                )
+                break  # Exit the loop as the well is found
+        if not well_found:  # Raise an error if the well was not found
+            raise ValueError(f"Well with position {well_pos} does not exist.")
+       
+    else:
+        logger.info(f"Well {well_pos} already retrieved")
+
+
+def _load_well_specific_data(viewer_data, well_pos: str):
+    """
+    Load and process data for a specific well from the CSV file.
+    """
+    if not viewer_data.csv_path:
+        logger.error("CSV path is not set in viewer_data.")
+        return
+
+    try:
+        data = pd.read_csv(viewer_data.csv_path, index_col=0)
+        _filter_csv_data(viewer_data, data, well_pos)
+    except pd.errors.EmptyDataError:
+        logger.error("CSV file is empty or all data is NA")
+    except pd.errors.ParserError:
+        logger.error("Error parsing CSV file")
+    except Exception as e:
+        logger.error(f"Unexpected error processing CSV: {e}")
+        raise
+
+
+def _filter_csv_data(viewer_data, data, wellpos):
+    filtered_data = data[data["well"] == wellpos]
+    if filtered_data.empty:
+        logger.warning(
+            "No data found for well %s in 'final_data.csv'",
+            viewer_data.well.getWellPos(),
+        )
+    else:
+        viewer_data.plate_data = pd.concat(
+            [viewer_data.plate_data, filtered_data]
+        )
+        viewer_data.intensities = _get_intensity_values(viewer_data, data)
+        logger.info("'final_data.csv' processed successfully")
+
+
+# TODO this function needs to check if the well mapp ann is actually the right data
+def _get_well_metadata(viewer_data, index):
+    map_ann = None
+    for ann in viewer_data.well[index].listAnnotations():
+        if ann.getValue():
+            map_ann = dict(ann.getValue())
+    if map_ann:
+        viewer_data.metadata.append(map_ann)
+    else:
+        raise ValueError(
+            f"No map annotation found for well {viewer_data.well[index].getWellPos()}"

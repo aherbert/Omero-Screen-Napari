@@ -62,7 +62,7 @@ class OmeroData:
 
     # Well data
     well: list[_WellWrapper] = field(default_factory=list)
-    well_name: list[str] = field(default_factory=list)
+    well_pos_list: list[str] = field(default_factory=list)
     well_id: list[int] = field(default_factory=list)
     metadata: list[dict] = field(default_factory=list)
 

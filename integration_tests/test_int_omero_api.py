@@ -17,7 +17,7 @@ from omero_screen_napari.plate_handler import (
     FlatfieldMaskParser,
     PixelSizeParser,
     ScaleIntensityParser,
-    parse_pate_data,
+    parse_plate_data,
 )
 
 
@@ -33,7 +33,7 @@ def cleanup_csv_directory():
     if tmp_path.exists():
         print(f"Cleaning up {tmp_path}")
         shutil.rmtree(tmp_path)
-    
+
 
 @omero_connect
 def test_csv_download(cleanup_csv_directory, conn=None):
@@ -164,13 +164,14 @@ def test_pixel_size_manager(conn=None):
     pixel_manager.parse_pixel_size_values()
     assert omero_data.pixel_size == (1.2, 1.2), "Failed to retrieve pixel size"
 
+
 def test_parse_plate_data_success(cleanup_csv_directory):
     """
     Test the parse plate data function
     """
     omero_data.reset()
-    #omero_data.data_path = cleanup_csv_directory
-    parse_pate_data(omero_data, plate_id=53)
+    # omero_data.data_path = cleanup_csv_directory
+    parse_plate_data(omero_data, plate_id=53)
     # print(f"Data Path is {omero_data.data_path}")
     # print(f"CSV Path is {omero_data.csv_path}")
     # print(f"Project is {omero_data.project_id}")
@@ -195,4 +196,3 @@ def test_parse_plate_data_success(cleanup_csv_directory):
         "EdU": (236, 4728),
     } == omero_data.intensities, "Failed to retrieve intensities"
     assert omero_data.pixel_size == (1.2, 1.2), "Failed to retrieve pixel size"
-   
