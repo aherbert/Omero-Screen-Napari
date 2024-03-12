@@ -123,7 +123,9 @@ def generate_crops(image_data, segmentation, cellcycle, crop_size):
     for i in range(image_data.shape[0]):
         # Extract data and labels for the current image
         current_data = image_data[i]
-        if segmentation == "Nuclei":
+        if len(viewer_data.labels.shape) == 3:
+            current_labels = viewer_data.labels[i, ...]
+        elif segmentation == "Nuclei":
             current_labels = viewer_data.labels[..., 0][i]
         else:
             current_labels = viewer_data.labels[..., 1][i]

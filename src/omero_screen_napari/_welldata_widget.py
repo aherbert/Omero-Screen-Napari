@@ -130,25 +130,32 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
         single_key = list(channel_names.keys())[0]
         color_map_dict[single_key] = "gray"
         return color_map_dict
+    
 
-    # Default color assignments for known channels
-    known_channel_colors = {"DAPI": "blue", "Tub": "green", "EdU": "gray"}
+    color_map_dict = {"DAPI": "blue"}
 
-    # Remaining colors for other channels
-    remaining_colors = ["red"]
+    # Default color assignments for Tub and EdU
+    special_channels = {"Tub": "green", "EdU": "gray"}
 
-    # Assign known colors to known channels if they exist
-    for known_channel, known_color in known_channel_colors.items():
-        if known_channel in channel_names:
-            color_map_dict[known_channel] = known_color
+    # Determine remaining color options based on presence of Tub and EdU
+    remaining_colors = ['red']
+    if "Tub" not in channel_names:
+        remaining_colors.append("green")
+    if "EdU" not in channel_names:
+        remaining_colors.append("gray")
 
-    # Assign remaining colors to any remaining channels
-    remaining_channels = set(channel_names.keys()) - set(color_map_dict.keys())
-    for remaining_channel, remaining_color in zip(
-        remaining_channels, remaining_colors
-    ):
-        color_map_dict[remaining_channel] = remaining_color
+    # Assign colors to Tub and EdU if present
+    for channel in special_channels:
+        if channel in channel_names:
+            color_map_dict[channel] = special_channels[channel]
+
+    # Assign remaining colors to any other channels
+    remaining_channels = [channel for channel in channel_names if channel not in color_map_dict]
+    for channel, color in zip(remaining_channels, remaining_colors):
+        color_map_dict[channel] = color
+
     return color_map_dict
+
 
 
 # Add small widget for metadata to get info pn cell line and condition
