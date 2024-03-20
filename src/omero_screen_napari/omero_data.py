@@ -43,7 +43,9 @@ class OmeroData:
     """
     Dataclass to store all the data related to the omero project and plate.
     """
-
+    # User Input
+    well_pos_list: list[str] = field(default_factory=list)
+    
     # Screen data
     project_id: int = field(default_factory=get_project_id)
     screen_dataset: _DatasetWrapper = field(
@@ -61,10 +63,12 @@ class OmeroData:
     intensities: dict = field(default_factory=dict)
 
     # Well data
-    well: list[_WellWrapper] = field(default_factory=list)
-    well_pos_list: list[str] = field(default_factory=list)
-    well_id: list[int] = field(default_factory=list)
-    metadata: list[dict] = field(default_factory=list)
+    
+    well_list: list[_WellWrapper] = field(default_factory=list)
+    well_id_list: list[int] = field(default_factory=list)
+    well_metadata_list: list[dict] = field(default_factory=list)
+    well_ifdata: pl.DataFrame = field(default_factory=pl.DataFrame)
+    well_image_index: list[int] = field(default_factory=list)
 
     # Image data
     images: np.ndarray = field(default_factory=lambda: np.empty((0,)))

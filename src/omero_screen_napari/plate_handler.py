@@ -1,8 +1,10 @@
 import logging
 import random
+import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
+import numpy as np
 import omero
 import polars as pl
 from ezomero import get_image
@@ -24,13 +26,18 @@ from omero_screen_napari.omero_data_singleton import (
 )
 
 logger = logging.getLogger("omero-screen-napari")
+# -----------------------------------------------PARSE USER INPUT -----------------------------------------------------
 
 
-@omero_connect
+
+# -----------------------------------------------PARSE PLATE DATA -----------------------------------------------------
+
 def parse_plate_data(
     omero_data,
     plate_id: int,
-    conn: BlitzGateway = None,
+    well_pos: str,
+    image_input: str,
+    conn: BlitzGateway ,
 ) -> None:
     """
     This functions controls the flow of the data
@@ -45,21 +52,24 @@ def parse_plate_data(
         The images options are 'All'; 0-3; 1, 3, 4. This will be processed by the ImageHandler to retrieve the relevant images
     """
     # check if plate-ID already supplied, if it is then skip PlateHandler
+    user_input = UserInput(omero_data, plate_id, well_pos, image_input, conn)
+    user_input.parse_data()
     if plate_id != omero_data.plate_id:
         reset_omero_data()
         try:
             logger.info(f"Retrieving new plate data for plate {plate_id}")  # noqa: G004
             omero_data.plate_id = plate_id
             plate = conn.getObject("Plate", plate_id)
-            csv_parser = CsvFileParser(omero_data, plate)
+            omero_data.plate = plate
+            csv_parser = CsvFileParser(omero_data)
             csv_parser.parse_csv()
-            channel_parser = ChannelDataParser(omero_data, plate)
+            channel_parser = ChannelDataParser(omero_data)
             channel_parser.parse_channel_data()
             flatfield_parser = FlatfieldMaskParser(omero_data, conn)
             flatfield_parser.parse_flatfieldmask()
             scale_intensity_parser = ScaleIntensityParser(omero_data)
             scale_intensity_parser.parse_intensities()
-            pixel_size_parser = PixelSizeParser(omero_data, plate)
+            pixel_size_parser = PixelSizeParser(omero_data)
             pixel_size_parser.parse_pixel_size_values()
         except Exception as e:  # noqa: BLE001
             logger.error(f"Error parsing plate data: {e}")
@@ -75,6 +85,67 @@ def parse_plate_data(
 
 
 # -----------------------------------------------CSV FILE -----------------------------------------------------
+class UserInput:
+    def __init__(self, omero_data: OmeroData, plate_id: int, well_pos: str, image_input: str, conn):
+        self._omero_data = omero_data
+        self._plate_id = plate_id
+        self._well_pos = well_pos
+        self._images = image_input
+        self._conn = conn
+        self._plate: Optional[omero.gateway.PlateWrapper] = None
+        self._image_number: Optional[int] = None
+        self._well_pos_list: Optional[List[str]] = None
+
+    def parse_data(self):
+        self.check_plate_id()
+        self.parse_image_number()
+        self.well_data_parser()
+        self._omero_data.well_pos_list = self._well_pos_list
+        self.image_index_parser()
+        self._omero_data.image_index = self._image_index
+
+
+    def check_plate_id(self):
+        self._plate = self._conn.getObject("Plate", self._plate_id)
+        if not self._plate:
+            logger.error(f"Plate with ID {self._plate_id} does not exist.")
+            raise ValueError(f"Plate with ID {self._plate_id} does not exist.")
+        else:
+            logger.info(f"Processing plate with ID {self._plate_id}.")
+
+    def parse_image_number(self):
+        first_well = list(self._plate.listChildren())[0]
+        self._image_number = len(list(first_well.listChildren()))
+
+    def well_data_parser(self):
+        pattern = re.compile(r'^[A-H][1-9]|1[0-2]$')
+        self._well_pos_list = [item.strip() for item in self._well_pos.split(",")]
+        for item in self._well_pos_list:
+            if not pattern.match(item):
+                logger.error(f"Invalid well input format: '{item}'. Must be A-H followed by 1-12.")
+                raise ValueError(f"Invalid well input format: '{item}'. Must be A-H followed by 1-12.")
+
+    def image_index_parser(self):
+        index = self._images
+
+        if not (index.lower() == 'all' or re.match(r'^(\d+(-\d+)?)(,\s*\d+(-\d+)?)*$', index)):
+         logger.error(f"Image input '{index}' doesn't match any of the expected patterns 'All, 1-3, 1'.")
+         raise ValueError(f"Image input '{index}' doesn't match any of the expected patterns 'All, 1-3, 1'.")
+
+        if index.lower() == 'all':
+            self._image_index = list(range(self._image_number))  # Assuming well count is inclusive and starts at 1
+        elif '-' in index:
+            # Handle range, e.g., '1-3'
+            start, end = map(int, index.split('-'))
+            self._image_index = list(range(start, end + 1))
+        elif ',' in index:
+            # Handle list, e.g., '1, 4, 5'
+            self._image_index = list(map(int, index.split(', ')))
+        else:
+            # Handle single number, e.g., '1'
+            self._image_index = [int(index)]
+
+
 class CsvFileParser:
     """
     Class to handle csv file retrieval and processing from Omero Plate
@@ -88,13 +159,12 @@ class CsvFileParser:
     """
 
     def __init__(
-        self, omero_data: OmeroData, plate: omero.gateway.PlateWrapper
-    ):
+        self, omero_data: OmeroData):
         self._omero_data = omero_data
         self._plate_id: int = omero_data.plate_id
-        self._plate = plate
+        self._plate = omero_data.plate
         self._data_path: Path = omero_data.data_path
-        self._csv_file_path: Path = None
+        self._csv_file_path: Optional[Path] = None
 
     def parse_csv(self):
         """Orchestrate the csv file handling. Check if csv file is available, if not download it.
@@ -177,9 +247,9 @@ class ChannelDataParser:
     _tidy_up_channel_data: Helper method that processes the channel data to a dictionary
     """
 
-    def __init__(self, omero_data: OmeroData, plate: PlateWrapper):
+    def __init__(self, omero_data: OmeroData):
         self._omero_data = omero_data
-        self._plate = plate
+        self._plate = omero_data.plate
         self._plate_id: int = omero_data.plate_id
 
     def parse_channel_data(self):
@@ -377,7 +447,7 @@ class ScaleIntensityParser:
     def __init__(self, omero_data: OmeroData):
         self._omero_data = omero_data
         self._plate_data: pl.LazyFrame = omero_data.plate_data
-        self._keyword: str = None
+        self._keyword: Optional[str] = None
         self._intensities: Tuple[dict] = ({}, {})
 
     def parse_intensities(self):
@@ -412,7 +482,7 @@ class ScaleIntensityParser:
         Filter the dataframe to only include columns with the keyword.
         """
         intensity_dict = {}
-        for channel, _value in self._omero_data.channel_data.items():
+        for channel, channel_value in self._omero_data.channel_data.items():
             cols = (
                 f"intensity_max_{channel}{self._keyword}",
                 f"intensity_min_{channel}{self._keyword}",
@@ -429,7 +499,7 @@ class ScaleIntensityParser:
                 self._plate_data.select(pl.col(cols[1])).min().collect()
             )
 
-            intensity_dict[channel] = (
+            intensity_dict[int(channel_value)] = (
                 int(min_value[0, 0]),
                 int(max_value[0, 0]),
             )
@@ -447,13 +517,12 @@ class PixelSizeParser:
     """
 
     def __init__(
-        self, omero_data: OmeroData, plate: omero.gateway.PlateWrapper
-    ):
+        self, omero_data: OmeroData):
         self._omero_data = omero_data
-        self._plate = plate
-        self._random_wells: List = None
-        self._random_images: List = None
-        self._pixel_size: Tuple[int] = None
+        self._plate = omero_data.plate
+        self._random_wells: Optional[List[omero.gateway.WellWrapper]] = None
+        self._random_images: Optional[List[omero.gateway.ImageWrapper]] = None
+        self._pixel_size: Optional[Tuple[int]] = None
 
     def parse_pixel_size_values(self):
         self._check_wells_and_images()
@@ -517,103 +586,125 @@ class PixelSizeParser:
         else:
             logger.error("Pixel sizes are not identical between wells")
             raise ValueError("Pixel sizes are not identical between wells")
-        
-#-----------------------------------------------Well Data-----------------------------------------------------
+
+
+# -----------------------------------------------Well Data-----------------------------------------------------
 
 
 class WellDataParser:
     """
-    """
-    def __init__(self, omero_data: OmeroData, plate: omero.gateway.PlateWrapper, well_pos: str):
-        self._omero_data = omero_data
-        self._plate = plate
-        self._well_pos = well_pos
-        self._well = None
-        self._well_id = None
-        self._images = None
+    Class to handle well data retrieval and processing from Omero Plate.
+    Well metadata, csv data and imaged are checked and retrieved for each well
+    and added to the omaro_data data class for further usage by the Napari Viewer.
+      """
 
-    def parse_well(self): 
-        well_found = False  
+    def __init__(
+        self,
+        omero_data: OmeroData,
+        well_pos: str,
+    ):
+        self._omero_data = omero_data
+        self._plate = omero_data.plate
+        self._well_pos = well_pos
+        self._well: Optional[omero.gateway.WellWrapper] = None
+        self._well_id: Optional[str] = None
+        self._metadata: Optional[dict] = None
+        self._well_ifdata: Optional[pl.DataFrame] = None
+        
+
+    def parse_well(self):
+        self._parse_well_object()
+        self._omero_data.well_pos_list.append(self._well_pos)
+        self._omero_data.well_list.append(self._well)
+        self._omero_data.well_id_list.append(self._well_id)
+        self._get_well_metadata()
+        self._omero_data.well_metadata_list.append(self._metadata)
+        self._load_well_csvdata()
+        self._omero_data.well_ifdata = pl.concat([self._omero_data.well_ifdata, self._well_ifdata])
+       
+        
+
+    def _parse_well_object(self):
+        well_found = False
         for well in self._plate.listChildren():
             if well.getWellPos() == self._well_pos:
                 self._well = well
                 self._well_id = well.getId()
+                logger.info(f"Well {self._well_pos} retrieved")
                 well_found = True
                 break
         if not well_found:
-            logger.error('f"Well with position {well_pos} does not exist."')  # Raise an error if the well was not found
-            raise ValueError(f"Well with position {self.well_pos} does not exist.")
-        
-    def parse_well_data(self):
-        self._load_well_specific_data()
-        self._get_well_metadata()
-        self._get_images()
-    def _get_well_object(viewer_data, conn, well_pos: str, index: int, images: str):
-    if well_pos not in viewer_data.well_name:
-        viewer_data.well_name.append(well_pos)
-        well_found = False  # Initialize a flag to check if the well is found
-        # get well object
-        for well in viewer_data.plate.listChildren():
-            if well.getWellPos() == well_pos:
-                viewer_data.well.append(well)
-                viewer_data.well_id.append(well.getId())
-                _load_well_specific_data(viewer_data, well_pos)
-                _get_well_metadata(viewer_data, index)
-                _get_images(viewer_data, images, index, conn)
-                well_found = (
-                    True  # Set the flag to True when the well is found
-                )
-                break  # Exit the loop as the well is found
-        if not well_found:  # Raise an error if the well was not found
-            raise ValueError(f"Well with position {well_pos} does not exist.")
-       
-    else:
-        logger.info(f"Well {well_pos} already retrieved")
+            logger.error(
+                'f"Well with position {well_pos} does not exist."'
+            )  # Raise an error if the well was not found
+            raise ValueError(
+                f"Well with position {self._well_pos} does not exist."
+            )
+
+    def _get_well_metadata(self):
+        map_ann = None
+        for ann in self._well.listAnnotations():
+            if ann.getValue():
+                map_ann = dict(ann.getValue())
+        if map_ann:
+            self._metadata = map_ann
+        else:
+            raise ValueError(
+                f"No map annotation found for well {self._well_pos}"
+            )
+    def _load_well_csvdata(self):
+        df = self._omero_data.plate_data
+        self._well_ifdata = df.filter(pl.col('well') == self._well_pos).collect()
 
 
-def _load_well_specific_data(viewer_data, well_pos: str):
-    """
-    Load and process data for a specific well from the CSV file.
-    """
-    if not viewer_data.csv_path:
-        logger.error("CSV path is not set in viewer_data.")
-        return
 
-    try:
-        data = pd.read_csv(viewer_data.csv_path, index_col=0)
-        _filter_csv_data(viewer_data, data, well_pos)
-    except pd.errors.EmptyDataError:
-        logger.error("CSV file is empty or all data is NA")
-    except pd.errors.ParserError:
-        logger.error("Error parsing CSV file")
-    except Exception as e:
-        logger.error(f"Unexpected error processing CSV: {e}")
-        raise
+class ImageParser:
+    def __init__(self, omero_data: OmeroData, well: omero.gateway.WellWrapper, conn: BlitzGateway):
+        self._omero_data = omero_data
+        self._well = well
+        self._conn = conn
+        self._image_index = self._omero_data.image_index
+        self._images: Optional[np.array] = None
+
+    def parse_image_data(self):
+        self._collect_images()
+        if self._omero_data.images.size == 0:
+            self._omero_data.images = np.squeeze(np.stack(self._image_arrays, axis=0), axis=(1, 2))
+            self._omero_data.image_ids = self._image_ids
+        else:
+            self._images = np.concatenate(
+                (self._omero_data.images, np.squeeze(np.stack(self._image_arrays, axis=0), axis=(1, 2))), axis=0
+            )
+            self._omero_data.image_ids.extend(self._image_ids)
+
+    def _collect_images(self):
+        self._image_arrays: list = []
+        self._image_ids: list = []
+        for index in self._image_index:
+            image_id, image_array = get_image(self._conn, self._well.getImage(index).getId())
+            flatfield_corrected_image = self._flatfield_correct_image(image_array)
+            self._image_arrays.append(self._scale_images(flatfield_corrected_image))
+            self._image_ids.append(image_id)
+
+    def _flatfield_correct_image(self, image_array):
+        corrected_array = image_array / self._omero_data.flatfield_mask
+        if len(corrected_array.shape) == 2:
+            corrected_array = corrected_array[..., np.newaxis]
+        logger.debug(f"Corrected image shape: {corrected_array.shape}")
+        return corrected_array
+    def _scale_images(self, corrected_array):
+        scaled_channels = []
+        logger.debug(f"omero_data.intensities: {self._omero_data.intensities}")
+        for i in range(corrected_array.shape[-1]):
+            scaled_channel = self._scale_img(
+                corrected_array[..., i], self._omero_data.intensities[i]
+            )
+            scaled_channels.append(scaled_channel)
+        return np.stack(scaled_channels, axis=-1)
+    def _scale_img(self, img: np.array, intensities: tuple) -> np.array:
+        """Increase contrast by scaling image to exclude lowest and highest intensities"""
+        return exposure.rescale_intensity(img, in_range=intensities)
 
 
-def _filter_csv_data(viewer_data, data, wellpos):
-    filtered_data = data[data["well"] == wellpos]
-    if filtered_data.empty:
-        logger.warning(
-            "No data found for well %s in 'final_data.csv'",
-            viewer_data.well.getWellPos(),
-        )
-    else:
-        viewer_data.plate_data = pd.concat(
-            [viewer_data.plate_data, filtered_data]
-        )
-        viewer_data.intensities = _get_intensity_values(viewer_data, data)
-        logger.info("'final_data.csv' processed successfully")
 
 
-# TODO this function needs to check if the well mapp ann is actually the right data
-def _get_well_metadata(viewer_data, index):
-    map_ann = None
-    for ann in viewer_data.well[index].listAnnotations():
-        if ann.getValue():
-            map_ann = dict(ann.getValue())
-    if map_ann:
-        viewer_data.metadata.append(map_ann)
-    else:
-        raise ValueError(
-            f"No map annotation found for well {viewer_data.well[index].getWellPos()}"

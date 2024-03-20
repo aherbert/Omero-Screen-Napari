@@ -1,17 +1,81 @@
 from unittest.mock import MagicMock, patch
-
+import logging
 import numpy as np
 import polars as pl
 import pytest
 
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.plate_handler import (
+    UserInput,
     ChannelDataParser,
     CsvFileParser,
     FlatfieldMaskParser,
     PixelSizeParser,
     ScaleIntensityParser,
+    WellDataParser,
 )
+# __________________________TESTING INPUT DATA PARSER________________________________
+def test_check_plate_exist(mock_conn, caplog):
+    plate_id = 123
+    caplog.set_level(logging.INFO)
+    mock_connection = mock_conn(plate_id, MagicMock())
+    user_input = UserInput(MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection)
+    user_input.check_plate_id()
+    assert 'Processing plate with ID 123' in caplog.text
+
+def test_check_plate_doesnotexist(mock_conn):
+    plate_id = 124
+    mock_connection = mock_conn(plate_id, MagicMock(), none_plate_id=124)
+    user_input = UserInput(MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection)
+    with pytest.raises(ValueError) as exc_info:
+        user_input.check_plate_id()
+    assert "Plate with ID 124 does not exist" in str(exc_info.value)
+def test_parse_image_number(mock_plate_for_input_test):
+    user_input = UserInput(MagicMock(), 123, MagicMock(), MagicMock(), MagicMock())
+    user_input._plate = mock_plate_for_input_test
+    user_input.parse_image_number()
+    assert user_input._image_number == 5
+
+@pytest.mark.parametrize("well_pos,expected_exception", [
+    ("A1,B2,C3", None),  # valid input, no exception expected
+    ("A12,H12", None),  # valid edge cases
+    ("A0,B13,Z1", ValueError),  # invalid: A0 and B13 out of range, Z1 invalid row
+    ("", ValueError),  # invalid: empty string
+    ("A1, B 2, C3", ValueError)  # invalid: space in well position
+])
+
+def test_well_data_parser(well_pos, expected_exception):
+# sourcery skip: no-conditionals-in-tests
+    if expected_exception:
+        with pytest.raises(expected_exception):
+            user_input = UserInput(MagicMock(), 1, well_pos, MagicMock(), MagicMock())
+            user_input.well_data_parser()
+    else:
+        user_input = UserInput(MagicMock(), 1, well_pos, MagicMock(), MagicMock())
+        user_input.well_data_parser()
+        # Ensure the well positions are correctly parsed and stored in _well_pos_list
+        expected_well_pos_list = [item.strip() for item in well_pos.split(",")]
+        assert user_input._well_pos_list == expected_well_pos_list, "The well positions were not parsed correctly"
+
+@pytest.mark.parametrize("images_input,expected_output,image_number", [
+    ("all", list(range(10)), 10),  # Assuming `_image_number` is 10
+    ("1-3", [1, 2, 3], 5),  # Range input
+    ("1, 3, 5", [1, 3, 5], 5),  # List input
+    ("1", [1], 5),  # Single number input
+    ("1-3, 5", ValueError, 5),  # Invalid format (mixed range and list without proper handling in the method)
+    ("abc", ValueError, 5),  # Completely invalid input
+])
+def test_image_index_parser(images_input, expected_output, image_number, mock_omero_data, mock_conn):
+    user_input = UserInput(mock_omero_data, 1, "A1,B2,C3", images_input, mock_conn)
+    user_input._image_number = image_number  # Set the `_image_number` attribute for the test
+
+# sourcery skip: no-conditionals-in-tests
+    if expected_output is ValueError:
+        with pytest.raises(ValueError):
+            user_input.image_index_parser()
+    else:
+        user_input.image_index_parser()
+        assert user_input._image_index == expected_output, f"Expected {expected_output}, got {user_input._image_index}"
 
 
 # __________________________TESTING CSV FILE MANAGER________________________________
@@ -19,7 +83,7 @@ def test_csv_available_when_file_exists(tmp_path, mock_omero_data):
     data_path = tmp_path / "omero_screen_data"
     mock_omero_data.data_path = data_path
     mock_omero_data.data_path.mkdir(exist_ok=True)
-    csv_manager = CsvFileParser(mock_omero_data, MagicMock())
+    csv_manager = CsvFileParser(mock_omero_data)
     tmp_file = data_path / "123.csv"
     tmp_file.touch()
     assert csv_manager._csv_available() is True, "The csv file was not found."
@@ -32,7 +96,7 @@ def test_csv_unvailable_when_file_exists(tmp_path, mock_omero_data):
     data_path = tmp_path / "omero_screen_data"
     mock_omero_data.data_path = data_path
     mock_omero_data.data_path.mkdir(exist_ok=True)
-    csv_manager = CsvFileParser(mock_omero_data, MagicMock())
+    csv_manager = CsvFileParser(mock_omero_data)
     tmp_file = data_path / "124.csv"
     tmp_file.touch()
     assert not csv_manager._csv_available()
@@ -62,7 +126,7 @@ def test_csv_unvailable_when_file_exists(tmp_path, mock_omero_data):
 def test_get_csv_file_success(
     mock_omero_data, mock_plate, file_names, expected_file_name
 ):
-    csv_manager = CsvFileParser(mock_omero_data, MagicMock())
+    csv_manager = CsvFileParser(mock_omero_data)
     csv_manager._plate = mock_plate(file_names)
     csv_manager._get_csv_file()
     actual_file_name = csv_manager._original_file.getName()
@@ -73,8 +137,8 @@ def test_get_csv_file_success(
 
 def test_get_csv_file_failure(mock_plate, mock_omero_data):
     file_names = ["not_relevant_file1.csv", "not_relevant_file2.csv"]
-    csv_manager = CsvFileParser(mock_omero_data, MagicMock())
-    csv_manager.plate = mock_plate(file_names)
+    csv_manager = CsvFileParser(mock_omero_data)
+    csv_manager._plate = mock_plate(file_names)
     with pytest.raises(ValueError) as exc_info:
         csv_manager._get_csv_file()
     assert "No suitable csv file found for the plate" in str(
@@ -106,8 +170,8 @@ def test_download_csv(csv_manager_with_mocked_file):
 
 def test_error_when_no_map_annotations(mock_plate):
     plate = mock_plate(file_names=["file1.txt", "file2.txt"])
-    channel_manager = ChannelDataParser(omero_data, plate)
-
+    channel_manager = ChannelDataParser(omero_data)
+    channel_manager._plate = plate
     with pytest.raises(ValueError) as exc_info:
         channel_manager._get_map_ann()
 
@@ -120,9 +184,9 @@ def test_error_when_wrong_map_annotations(mock_plate):
         file_names=["file1.txt"], map_annotations=[map_annotations]
     )
     channel_manager = ChannelDataParser(
-        omero_data, plate
+        omero_data
     )  # Ensure omero_data is appropriately defined
-
+    channel_manager._plate = plate
     with pytest.raises(ValueError) as exc_info:
         channel_manager._get_map_ann()
 
@@ -137,8 +201,9 @@ def test_found_map_annotations(mock_plate):
         file_names=["file1.txt"], map_annotations=[map_annotations]
     )
     channel_manager = ChannelDataParser(
-        omero_data, plate
+        omero_data
     )  # Ensure omero_data is appropriately defined
+    channel_manager._plate = plate
     channel_manager._get_map_ann()
 
     assert channel_manager.map_annotations == map_annotations
@@ -154,7 +219,8 @@ def test_filter_channel_data_with_space(mock_plate):
     plate = mock_plate(
         file_names=["file1.txt"], map_annotations=[map_annotations]
     )
-    channel_manager = ChannelDataParser(omero_data, plate)
+    channel_manager = ChannelDataParser(omero_data)
+    channel_manager._plate = plate
     channel_manager.map_annotations = map_annotations
     channel_manager._tidy_up_channel_data()
     assert channel_manager.channel_data == {
@@ -175,7 +241,8 @@ def test_filter_channel_data_with_Hoechst(mock_plate):
     plate = mock_plate(
         file_names=["file1.txt"], map_annotations=[map_annotations]
     )
-    channel_manager = ChannelDataParser(omero_data, plate)
+    channel_manager = ChannelDataParser(omero_data)
+    channel_manager._plate = plate
     channel_manager.map_annotations = map_annotations
     channel_manager._tidy_up_channel_data()
     assert channel_manager.channel_data == {
@@ -467,8 +534,8 @@ def test_get_values_nucleus(lf_nucleus):
     manager._keyword = "_nucleus"
     manager._get_values()
     assert manager._intensities == {
-        "DAPI": (10, 200),
-        "p21": (20, 300),
+        1 : (10, 200),
+        2 : (20, 300),
     }, "The max_values dictionary does not match the expected values."
 
 
@@ -479,8 +546,8 @@ def test_get_values_cell(lf_cell):
     manager._keyword = "_cell"
     manager._get_values()
     assert manager._intensities == {
-        "DAPI": (20, 300),
-        "p21": (30, 400),
+         1 : (20, 300),
+         2 : (30, 400),
     }, "The max_values dictionary does not match the expected values."
 
 
@@ -502,7 +569,8 @@ def test_get_values_wrong_col(lf_wron_col):
 
 def test_check_wells_and_images_with_wells(mock_plate):
     mock_plate = mock_plate(["mock1"], wells_count=4, img_number=5)
-    manager = PixelSizeParser(MagicMock(), mock_plate)
+    manager = PixelSizeParser(MagicMock())
+    manager._plate = mock_plate
     manager._check_wells_and_images()
     assert len(manager._random_wells) == 2
     assert len(manager._random_images) == 2
@@ -510,7 +578,8 @@ def test_check_wells_and_images_with_wells(mock_plate):
 
 def test_check_wells_and_images_without_wells(mock_plate):
     mock_plate = mock_plate(["mock1"], wells_count=0, img_number=5)
-    manager = PixelSizeParser(MagicMock(), mock_plate)
+    manager = PixelSizeParser(MagicMock())
+    manager._plate = mock_plate
     with pytest.raises(ValueError) as exc_info:
         manager._check_wells_and_images()
     assert "No wells found in the plate." in str(exc_info.value)
@@ -518,7 +587,8 @@ def test_check_wells_and_images_without_wells(mock_plate):
 
 def test_check_wells_and_images_without_images(mock_plate):
     mock_plate = mock_plate(["mock1"], wells_count=5, img_number=0)
-    manager = PixelSizeParser(MagicMock(), mock_plate)
+    manager = PixelSizeParser(MagicMock())
+    manager._plate = mock_plate
     with pytest.raises(Exception) as exc_info:
         manager._check_wells_and_images()
     assert "Unable to retrieve image from well" in str(exc_info.value)
@@ -529,7 +599,7 @@ def test_get_pixel_values():
     mock_image = MagicMock()
     mock_image.getPixelSizeX.return_value = 1.19
     mock_image.getPixelSizeY.return_value = 1.19
-    manager = PixelSizeParser(MagicMock(), MagicMock())
+    manager = PixelSizeParser(MagicMock())
     (x, y) = manager._get_pixel_values(mock_image)
     assert (x, y) == (1.2, 1.2)
 
@@ -539,7 +609,7 @@ def test_get_pixel_values_raises_value_error_on_none():
     mock_image = MagicMock()
     mock_image.getPixelSizeX.return_value = None
     mock_image.getPixelSizeY.return_value = None
-    manager = PixelSizeParser(MagicMock(), MagicMock())
+    manager = PixelSizeParser(MagicMock())
     # Assert that ValueError is raised when pixels are None
     with pytest.raises(ValueError) as exc_info:
         manager._get_pixel_values(mock_image)
@@ -550,7 +620,7 @@ def test_get_pixel_values_raises_value_error_on_none():
 def test_check_pixel_values(mock_get_pixel_values, mock_omero_data):
     # Setup a mock image object with getPrimaryPixels returning None
     mock_get_pixel_values.return_value = (1, 1)
-    manager = PixelSizeParser(mock_omero_data, MagicMock())
+    manager = PixelSizeParser(mock_omero_data)
     manager._random_images = [MagicMock(), MagicMock()]
     manager._check_pixel_values()
     assert manager._pixel_size == (1, 1)
@@ -560,7 +630,7 @@ def test_check_pixel_values(mock_get_pixel_values, mock_omero_data):
 def test_check_pixel_values_zero(mock_get_pixel_values, mock_omero_data):
     # Setup a mock image object with getPrimaryPixels returning None
     mock_get_pixel_values.side_effect = [(0, 1), (1, 1)]
-    manager = PixelSizeParser(mock_omero_data, MagicMock())
+    manager = PixelSizeParser(mock_omero_data)
     manager._random_images = [MagicMock(), MagicMock()]
     with pytest.raises(ValueError) as exc_info:
         manager._check_pixel_values()
@@ -571,8 +641,80 @@ def test_check_pixel_values_zero(mock_get_pixel_values, mock_omero_data):
 def test_check_pixel_values_unequal(mock_get_pixel_values, mock_omero_data):
     # Setup a mock image object with getPrimaryPixels returning None
     mock_get_pixel_values.side_effect = [(2, 1), (1, 1)]
-    manager = PixelSizeParser(mock_omero_data, MagicMock())
+    manager = PixelSizeParser(mock_omero_data)
     manager._random_images = [MagicMock(), MagicMock()]
     with pytest.raises(ValueError) as exc_info:
         manager._check_pixel_values()
     assert "Pixel sizes are not identical between wells" in str(exc_info.value)
+
+
+# __________________________TESTING Well Parser________________________________
+
+
+def test_parse_well_object_found(mock_plate_well):
+    test_well_pos = "A2"
+    mock_plate = mock_plate_well(["A1", "A2", "B1"])
+    manager = WellDataParser(
+        MagicMock(), test_well_pos
+    )
+    manager._plate = mock_plate
+    manager._parse_well_object()
+    assert manager._well_id == "id_A2"
+
+
+def test_parse_well_object_notfound(mock_plate_well):
+    test_well_pos = "A5"
+    mock_plate = mock_plate_well(["A1", "A2", "B1"])
+    manager = WellDataParser(
+        MagicMock(), test_well_pos
+    )
+    manager._plate = mock_plate
+    with pytest.raises(ValueError) as exc_info:
+        manager._parse_well_object()
+    assert "Well with position A5 does not exist." in str(exc_info.value)
+
+
+def test_get_well_metadata_with_valid_annotations(
+    monkeypatch, well_with_annotations
+):
+    manager = WellDataParser(MagicMock(), "A1")
+    monkeypatch.setattr(manager, "_well", well_with_annotations)
+    monkeypatch.setattr(manager, "_well_pos", "A1")
+
+    manager._get_well_metadata()
+    assert manager._metadata == {"key": "value"}
+
+
+def test_get_well_metadata_with_no_valid_annotations(
+    monkeypatch, well_without_annotations
+):
+    manager = WellDataParser(MagicMock(), "A1")
+    monkeypatch.setattr(manager, "_well", well_without_annotations)
+    monkeypatch.setattr(manager, "_well_pos", "A1")
+
+    with pytest.raises(ValueError) as e:
+        manager._get_well_metadata()
+    assert "No map annotation found for well A1" in str(e.value)
+
+
+def test_load_well_csvdata(omero_data_lazyframe_mock):
+    # Initialize your class with the mocked omero_data and a specific well position
+    well_pos = "A1"
+    manager = WellDataParser(
+        omero_data_lazyframe_mock, well_pos
+    )
+
+    # Execute the method under test
+    manager._load_well_csvdata()
+
+    # Verify the results
+    expected_df = (
+        pl.DataFrame({"well": ["A1"], "values": [10]}).lazy().collect()
+    )
+    assert manager._well_ifdata.equals(
+        expected_df
+    ), "The dataframes do not match"
+
+
+
+
