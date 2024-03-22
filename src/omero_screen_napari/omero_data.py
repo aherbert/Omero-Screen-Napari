@@ -45,7 +45,7 @@ class OmeroData:
     """
     # User Input
     well_pos_list: list[str] = field(default_factory=list)
-    
+    image_index:list[int] = field(default_factory=list)
     # Screen data
     project_id: int = field(default_factory=get_project_id)
     screen_dataset: _DatasetWrapper = field(
@@ -85,3 +85,16 @@ class OmeroData:
         This is used when reading in a new plate from napari.
         """
         self.__init__()
+    def reset_well_and_image_data(self):
+        """
+        Resets the well and image data to their default states.
+        """
+        self.well_list = []
+        self.well_id_list = []
+        self.well_metadata_list = []
+        self.well_ifdata = pl.DataFrame()
+        self.well_image_index = []
+        self.images = np.empty((0,))
+        self.image_ids = []
+        self.labels = np.empty((0,))
+        self.label_ids = []

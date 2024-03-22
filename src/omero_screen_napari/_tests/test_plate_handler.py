@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import polars as pl
 import pytest
-
+from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.plate_handler import (
     UserInput,
@@ -13,69 +13,109 @@ from omero_screen_napari.plate_handler import (
     PixelSizeParser,
     ScaleIntensityParser,
     WellDataParser,
+    ImageParser,
 )
+
+
 # __________________________TESTING INPUT DATA PARSER________________________________
 def test_check_plate_exist(mock_conn, caplog):
     plate_id = 123
     caplog.set_level(logging.INFO)
     mock_connection = mock_conn(plate_id, MagicMock())
-    user_input = UserInput(MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection)
-    user_input.check_plate_id()
-    assert 'Processing plate with ID 123' in caplog.text
+    user_input = UserInput(
+        MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection
+    )
+    user_input._check_plate_id()
+    assert "Processing plate with ID 123" in caplog.text
+
 
 def test_check_plate_doesnotexist(mock_conn):
     plate_id = 124
     mock_connection = mock_conn(plate_id, MagicMock(), none_plate_id=124)
-    user_input = UserInput(MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection)
+    user_input = UserInput(
+        MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection
+    )
     with pytest.raises(ValueError) as exc_info:
-        user_input.check_plate_id()
+        user_input._check_plate_id()
     assert "Plate with ID 124 does not exist" in str(exc_info.value)
+
+
 def test_parse_image_number(mock_plate_for_input_test):
-    user_input = UserInput(MagicMock(), 123, MagicMock(), MagicMock(), MagicMock())
+    user_input = UserInput(
+        MagicMock(), 123, MagicMock(), MagicMock(), MagicMock()
+    )
     user_input._plate = mock_plate_for_input_test
-    user_input.parse_image_number()
+    user_input._parse_image_number()
     assert user_input._image_number == 5
 
-@pytest.mark.parametrize("well_pos,expected_exception", [
-    ("A1,B2,C3", None),  # valid input, no exception expected
-    ("A12,H12", None),  # valid edge cases
-    ("A0,B13,Z1", ValueError),  # invalid: A0 and B13 out of range, Z1 invalid row
-    ("", ValueError),  # invalid: empty string
-    ("A1, B 2, C3", ValueError)  # invalid: space in well position
-])
 
+@pytest.mark.parametrize(
+    "well_pos,expected_exception",
+    [
+        ("A1,B2,C3", None),  # valid input, no exception expected
+        ("A12,H12", None),  # valid edge cases
+        (
+            "A0,B13,Z1",
+            ValueError,
+        ),  # invalid: A0 and B13 out of range, Z1 invalid row
+        ("", ValueError),  # invalid: empty string
+        ("A1, B 2, C3", ValueError),  # invalid: space in well position
+    ],
+)
 def test_well_data_parser(well_pos, expected_exception):
-# sourcery skip: no-conditionals-in-tests
+    # sourcery skip: no-conditionals-in-tests
     if expected_exception:
         with pytest.raises(expected_exception):
-            user_input = UserInput(MagicMock(), 1, well_pos, MagicMock(), MagicMock())
-            user_input.well_data_parser()
+            user_input = UserInput(
+                MagicMock(), 1, well_pos, MagicMock(), MagicMock()
+            )
+            user_input._well_data_parser()
     else:
-        user_input = UserInput(MagicMock(), 1, well_pos, MagicMock(), MagicMock())
-        user_input.well_data_parser()
+        user_input = UserInput(
+            MagicMock(), 1, well_pos, MagicMock(), MagicMock()
+        )
+        user_input._well_data_parser()
         # Ensure the well positions are correctly parsed and stored in _well_pos_list
         expected_well_pos_list = [item.strip() for item in well_pos.split(",")]
-        assert user_input._well_pos_list == expected_well_pos_list, "The well positions were not parsed correctly"
+        assert (
+            user_input._well_pos_list == expected_well_pos_list
+        ), "The well positions were not parsed correctly"
 
-@pytest.mark.parametrize("images_input,expected_output,image_number", [
-    ("all", list(range(10)), 10),  # Assuming `_image_number` is 10
-    ("1-3", [1, 2, 3], 5),  # Range input
-    ("1, 3, 5", [1, 3, 5], 5),  # List input
-    ("1", [1], 5),  # Single number input
-    ("1-3, 5", ValueError, 5),  # Invalid format (mixed range and list without proper handling in the method)
-    ("abc", ValueError, 5),  # Completely invalid input
-])
-def test_image_index_parser(images_input, expected_output, image_number, mock_omero_data, mock_conn):
-    user_input = UserInput(mock_omero_data, 1, "A1,B2,C3", images_input, mock_conn)
-    user_input._image_number = image_number  # Set the `_image_number` attribute for the test
 
-# sourcery skip: no-conditionals-in-tests
+@pytest.mark.parametrize(
+    "images_input,expected_output,image_number",
+    [
+        ("all", list(range(10)), 10),  # Assuming `_image_number` is 10
+        ("1-3", [1, 2, 3], 5),  # Range input
+        ("1, 3, 5", [1, 3, 5], 5),  # List input
+        ("1", [1], 5),  # Single number input
+        (
+            "1-3, 5",
+            ValueError,
+            5,
+        ),  # Invalid format (mixed range and list without proper handling in the method)
+        ("abc", ValueError, 5),  # Completely invalid input
+    ],
+)
+def test_image_index_parser(
+    images_input, expected_output, image_number, mock_omero_data, mock_conn
+):
+    user_input = UserInput(
+        mock_omero_data, 1, "A1,B2,C3", images_input, mock_conn
+    )
+    user_input._image_number = (
+        image_number  # Set the `_image_number` attribute for the test
+    )
+
+    # sourcery skip: no-conditionals-in-tests
     if expected_output is ValueError:
         with pytest.raises(ValueError):
-            user_input.image_index_parser()
+            user_input._image_index_parser()
     else:
-        user_input.image_index_parser()
-        assert user_input._image_index == expected_output, f"Expected {expected_output}, got {user_input._image_index}"
+        user_input._image_index_parser()
+        assert (
+            user_input._image_index == expected_output
+        ), f"Expected {expected_output}, got {user_input._image_index}"
 
 
 # __________________________TESTING CSV FILE MANAGER________________________________
@@ -534,8 +574,8 @@ def test_get_values_nucleus(lf_nucleus):
     manager._keyword = "_nucleus"
     manager._get_values()
     assert manager._intensities == {
-        1 : (10, 200),
-        2 : (20, 300),
+        1: (10, 200),
+        2: (20, 300),
     }, "The max_values dictionary does not match the expected values."
 
 
@@ -546,8 +586,8 @@ def test_get_values_cell(lf_cell):
     manager._keyword = "_cell"
     manager._get_values()
     assert manager._intensities == {
-         1 : (20, 300),
-         2 : (30, 400),
+        1: (20, 300),
+        2: (30, 400),
     }, "The max_values dictionary does not match the expected values."
 
 
@@ -654,9 +694,7 @@ def test_check_pixel_values_unequal(mock_get_pixel_values, mock_omero_data):
 def test_parse_well_object_found(mock_plate_well):
     test_well_pos = "A2"
     mock_plate = mock_plate_well(["A1", "A2", "B1"])
-    manager = WellDataParser(
-        MagicMock(), test_well_pos
-    )
+    manager = WellDataParser(MagicMock(), test_well_pos)
     manager._plate = mock_plate
     manager._parse_well_object()
     assert manager._well_id == "id_A2"
@@ -665,9 +703,7 @@ def test_parse_well_object_found(mock_plate_well):
 def test_parse_well_object_notfound(mock_plate_well):
     test_well_pos = "A5"
     mock_plate = mock_plate_well(["A1", "A2", "B1"])
-    manager = WellDataParser(
-        MagicMock(), test_well_pos
-    )
+    manager = WellDataParser(MagicMock(), test_well_pos)
     manager._plate = mock_plate
     with pytest.raises(ValueError) as exc_info:
         manager._parse_well_object()
@@ -700,9 +736,7 @@ def test_get_well_metadata_with_no_valid_annotations(
 def test_load_well_csvdata(omero_data_lazyframe_mock):
     # Initialize your class with the mocked omero_data and a specific well position
     well_pos = "A1"
-    manager = WellDataParser(
-        omero_data_lazyframe_mock, well_pos
-    )
+    manager = WellDataParser(omero_data_lazyframe_mock, well_pos)
 
     # Execute the method under test
     manager._load_well_csvdata()
@@ -716,5 +750,156 @@ def test_load_well_csvdata(omero_data_lazyframe_mock):
     ), "The dataframes do not match"
 
 
+# ------------------------------Test ImageParser ---------------------------------#
 
 
+@pytest.fixture
+def image_parser_with_mocks():
+    # Setup mocks
+    mock_get_image = MagicMock(return_value=(123, np.zeros((1080, 1080, 3))))
+
+    # Since the _scale_images method should not alter the shape of the array, we use the same shape for the mock return value
+    mock_scale_images = MagicMock(
+        side_effect=lambda x: x * 2
+    )  # Mock to double the values but keep the shape
+
+    # Create other necessary mocks
+    mock_flatfield_correct_image = MagicMock(
+        side_effect=lambda x: x
+    )  # Preserves the input shape and content
+    mock_omero_data = MagicMock(
+        spec=OmeroData, image_index=[0, 1]
+    )  # Example indexes
+    mock_well = MagicMock()
+    mock_conn = MagicMock()
+    # Apply patches
+    with patch(
+        "omero_screen_napari.plate_handler.get_image", mock_get_image
+    ), patch.object(
+        ImageParser, "_flatfield_correct_image", mock_flatfield_correct_image
+    ), patch.object(ImageParser, "_scale_images", mock_scale_images):
+        # Instantiate ImageParser with mocked dependencies
+        image_parser = ImageParser(mock_omero_data, mock_well, mock_conn)
+        yield (
+            image_parser,
+            mock_get_image,
+            mock_flatfield_correct_image,
+            mock_scale_images,
+        )
+
+
+def test_collect_images(image_parser_with_mocks):
+    (
+        image_parser,
+        mock_get_image,
+        mock_flatfield_correct_image,
+        mock_scale_images,
+    ) = image_parser_with_mocks
+
+    # Execute the method under test
+    image_parser._collect_images()
+
+    # Assertions
+    assert (
+        len(image_parser._image_ids) == 2
+    )  # Expecting two IDs were collected
+    assert (
+        len(image_parser._image_arrays) == 2
+    )  # Expecting two images were collected
+    # Ensure _scale_images maintains the original shape of the array
+    for array in image_parser._image_arrays:
+        assert array.shape == (1080, 1080, 3)
+    mock_get_image.assert_called()
+    assert mock_flatfield_correct_image.call_count == 2
+    assert mock_scale_images.call_count == 2
+
+
+@pytest.fixture
+def flatfield_mock():
+    omero_data = OmeroData()
+    # Setup a default flatfield_mask, actual values will be overridden in tests
+    omero_data.flatfield_mask = np.ones((1080, 1080))
+    omero_data.image_index = [0, 1]
+    return omero_data
+
+
+@pytest.mark.parametrize(
+    "image_array,flatfield_mask,expected_shape",
+    [
+        (
+            np.zeros((1080, 1080)),
+            np.ones((1080, 1080)),
+            (1080, 1080, 1),
+        ),  # 2D array
+        (
+            np.zeros((1080, 1080, 3)),
+            np.ones((1080, 1080, 3)),
+            (1080, 1080, 3),
+        ),
+    ],
+)
+def test_flatfield_correct_image(
+    image_array, flatfield_mask, expected_shape, flatfield_mock
+):
+    flatfield_mock.flatfield_mask = flatfield_mask
+    parser = ImageParser(
+        omero_data=flatfield_mock, well=None, conn=None
+    )  # Mock well and conn as necessary
+
+    corrected_array = parser._flatfield_correct_image(image_array)
+
+    assert (
+        corrected_array.shape == expected_shape
+    ), "Incorrect shape after flatfield correction"
+
+
+@pytest.fixture
+def image_parser_setup():
+    # Setup a mock for OmeroData with some dummy intensities
+    omero_data = OmeroData()
+    omero_data.intensities = [
+        (0, 255),
+        (0, 255),
+        (0, 255),
+    ]  # Example intensities for 3 channels
+
+    # Create an instance of your ImageParser with the mocked OmeroData
+    parser = ImageParser(
+        omero_data=omero_data, well=None, conn=None
+    )  # Assuming well and conn can be None for this test
+
+    return parser
+
+
+@pytest.mark.parametrize(
+    "input_shape,expected_output_shape",
+    [
+        ((1080, 1080, 3), (1080, 1080, 3)),  # 3 channels
+        (
+            (1080, 1080, 1),
+            (1080, 1080, 1),
+        ),  # Single channel, should still work
+    ],
+)
+def test_scale_images(input_shape, expected_output_shape, image_parser_setup):
+    corrected_array = np.random.rand(
+        *input_shape
+    )  # Generate a dummy corrected array with the given shape
+
+    with patch.object(
+        ImageParser,
+        "_scale_img",
+        return_value=np.zeros((input_shape[0], input_shape[1])),
+    ) as mock_scale_img:
+        # Execute the _scale_images method
+        output_array = image_parser_setup._scale_images(corrected_array)
+
+        # Assert that the output has the expected shape
+        assert (
+            output_array.shape == expected_output_shape
+        ), "Output array shape is incorrect"
+
+        # Verify that _scale_img was called the expected number of times (once per channel)
+        assert (
+            mock_scale_img.call_count == input_shape[-1]
+        ), f"_scale_img was called {mock_scale_img.call_count} times, expected {input_shape[-1]}"
