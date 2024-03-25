@@ -1,19 +1,21 @@
-from unittest.mock import MagicMock, patch
 import logging
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import polars as pl
 import pytest
+
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.plate_handler import (
-    UserInput,
     ChannelDataParser,
     CsvFileParser,
     FlatfieldMaskParser,
+    ImageParser,
     PixelSizeParser,
     ScaleIntensityParser,
+    UserInput,
     WellDataParser,
-    ImageParser,
 )
 
 
@@ -864,11 +866,9 @@ def image_parser_setup():
     ]  # Example intensities for 3 channels
 
     # Create an instance of your ImageParser with the mocked OmeroData
-    parser = ImageParser(
+    return ImageParser(
         omero_data=omero_data, well=None, conn=None
     )  # Assuming well and conn can be None for this test
-
-    return parser
 
 
 @pytest.mark.parametrize(

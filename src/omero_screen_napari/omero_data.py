@@ -43,9 +43,10 @@ class OmeroData:
     """
     Dataclass to store all the data related to the omero project and plate.
     """
+
     # User Input
     well_pos_list: list[str] = field(default_factory=list)
-    image_index:list[int] = field(default_factory=list)
+    image_index: list[int] = field(default_factory=list)
     # Screen data
     project_id: int = field(default_factory=get_project_id)
     screen_dataset: _DatasetWrapper = field(
@@ -63,7 +64,7 @@ class OmeroData:
     intensities: dict = field(default_factory=dict)
 
     # Well data
-    
+
     well_list: list[_WellWrapper] = field(default_factory=list)
     well_id_list: list[int] = field(default_factory=list)
     well_metadata_list: list[dict] = field(default_factory=list)
@@ -74,7 +75,6 @@ class OmeroData:
     images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
     image_ids: list = field(default_factory=list)
     labels: np.ndarray = field(default_factory=lambda: np.empty((0,)))
-    label_ids: list = field(default_factory=list)
 
     # Stitched images
     stitched_images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
@@ -85,6 +85,7 @@ class OmeroData:
         This is used when reading in a new plate from napari.
         """
         self.__init__()
+
     def reset_well_and_image_data(self):
         """
         Resets the well and image data to their default states.
@@ -97,4 +98,3 @@ class OmeroData:
         self.images = np.empty((0,))
         self.image_ids = []
         self.labels = np.empty((0,))
-        self.label_ids = []

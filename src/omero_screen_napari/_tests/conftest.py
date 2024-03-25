@@ -1,12 +1,13 @@
 from unittest.mock import MagicMock, create_autospec
+
 import polars as pl
 import pytest
 from omero.gateway import (
     DatasetWrapper,
     FileAnnotationWrapper,
     MapAnnotationWrapper,
+    PlateWrapper,
     ProjectWrapper,
-    PlateWrapper
 )
 
 from omero_screen_napari.plate_handler import (
@@ -14,6 +15,8 @@ from omero_screen_napari.plate_handler import (
     CsvFileParser,
     OmeroData,
 )
+
+
 @pytest.fixture
 def mock_plate_for_input_test():
     # Create a mock for the Well object with listChildren method

@@ -49,7 +49,7 @@ def parse_omero_data(
     try:
         parse_plate_data(omero_data, plate_id, well_pos, image_input, conn)
         # clear well and image data to avoid appending to existing data
-        omero_data.reset_well_and_image_data() 
+        omero_data.reset_well_and_image_data()
         for well_pos in omero_data.well_pos_list:
             logger.info(f"Processing well {well_pos}")  # noqa: G004
             well_image_parser(omero_data, well_pos, conn)
@@ -107,7 +107,7 @@ def well_image_parser(omero_data, well_pos: str, conn):
     well_data_parser.parse_well()
     well = well_data_parser._well
     image_parser = ImageParser(omero_data, well, conn)
-    image_parser.parse_images()
+    image_parser.parse_images_and_labels()
 
 
 # -----------------------------------------------USER INPUT -----------------------------------------------------
@@ -125,9 +125,9 @@ class UserInput:
         self._well_pos = well_pos
         self._images = image_input
         self._conn = conn
-        self._plate: Optional[omero.gateway.PlateWrapper] = None
+        self._plate: PlateWrapper | None = None
         self._image_number: Optional[int] = None
-        self._well_pos_list: Optional[List[str]] = None
+        self._well_pos_list: list[str] = []
 
     def parse_data(self):
         self._check_plate_id()
@@ -736,15 +736,24 @@ class ImageParser:
         self._conn: BlitzGateway = conn
         self._image_index: list[int] = self._omero_data.image_index
         self._images: Optional[np.array] = None
+        self._image_ids: Optional[list[int]] = None
+        self._label_arrays: Optional[list[np.array]] = None
 
-    def parse_images(self):  
+
+    def parse_images_and_labels(self):
+        self._parse_images()
+        self._parse_labels()
+
+    def _parse_images(self):
         self._collect_images()
         if self._omero_data.images.shape == (0,):
             self._omero_data.images = np.squeeze(
                 np.stack(self._image_arrays, axis=0), axis=(1, 2)
             )
             self._omero_data.image_ids = self._image_ids
-            logger.info(f"Images loaded to empty omero_data.images, new shape: {omero_data.images.shape}")  # noqa: G004
+            logger.info(
+                f"Images loaded to empty omero_data.images, new shape: {omero_data.images.shape}"
+            )  # noqa: G004
         else:
             self._omero_data.images = np.concatenate(
                 (
@@ -756,13 +765,31 @@ class ImageParser:
                 axis=0,
             )
             self._omero_data.image_ids.extend(self._image_ids)
-            logger.info(f"Images added to omero_data.images, new shape: {omero_data.images.shape}")  # noqa: G004
+            logger.info(
+                f"Images added to omero_data.images, new shape: {omero_data.images.shape}"
+            )  # noqa: G004
+
+    def _parse_labels(self):
+        self._check_label_data()
+        self._collect_labels()
+        if self._omero_data.labels.size == 0:
+            self._omero_data.labels = self._label_arrays
+            logger.info(
+                f"Labels loaded to empty omero_data.labels, new shape: {omero_data.labels.shape}"
+            )
+        else:
+            self._omero_data.labels = np.concatenate(
+                (self._omero_data.labels, self._label_arrays), axis=0
+            )
+            logger.info(
+                f"Labels added to omero_data.labels, new shape: {omero_data.labels.shape}"
+            )
 
     def _collect_images(self):
         self._image_arrays: list = []
         self._image_ids: list = []
         for index in self._image_index:
-            image_id, image_array = get_image(
+            image, image_array = get_image(
                 self._conn, self._well.getImage(index).getId()
             )
             flatfield_corrected_image = self._flatfield_correct_image(
@@ -771,7 +798,7 @@ class ImageParser:
             self._image_arrays.append(
                 self._scale_images(flatfield_corrected_image)
             )
-            self._image_ids.append(image_id)
+            self._image_ids.append(image.getId())
 
     def _flatfield_correct_image(self, image_array):
         corrected_array = image_array / self._omero_data.flatfield_mask
@@ -793,3 +820,79 @@ class ImageParser:
     def _scale_img(self, img: np.array, intensities: tuple) -> np.array:
         """Increase contrast by scaling image to exclude lowest and highest intensities"""
         return exposure.rescale_intensity(img, in_range=intensities)
+
+    def _check_label_data(self):
+        label_names = [
+            int(image.getName().split("_")[0])
+            for image in self._omero_data.screen_dataset.listChildren()
+        ]
+        all_images_in_labes = all(
+            name in label_names for name in self._image_ids
+        )
+        if not all_images_in_labes:
+            logger.error("Available label images do not match loaded images")
+            raise ValueError(
+                "Available label images do not match loaded images"
+            )
+        else:
+            logger.info("All label images found")
+
+    def _collect_labels(self):
+        label_arrays = []
+        label_names = [f"{name}_segmentation" for name in self._image_index]
+
+        relevant_label_data = [
+            label_data
+            for label_data in self._omero_data.screen_dataset.listChildren()
+            if any(
+                label_name in label_data.getName()
+                for label_name in label_names
+            )
+        ]
+
+        for label_data in relevant_label_data:
+            _, label_array = get_image(self._conn, label_data.getId())
+            label_arrays.append(label_array.squeeze())
+        self._label_arrays = np.stack(label_arrays, axis=0)
+
+    
+        
+
+
+# ------------------------------------SEGMENTATION DATA-------------------------------------------
+
+
+# def _get_segmentation_masks(viewer_data, conn):
+# """
+# Get segmentation masks as mask list
+# """
+# mask_list = []
+# id_list = []
+# name_to_id = {
+#     image.getName(): image.getId()
+#     for image in viewer_data.screen_dataset.listChildren()
+# }
+# for image_name in viewer_data.image_ids:
+#     image_id = name_to_id.get(f"{image_name}_segmentation")
+#     if image_id not in viewer_data.label_ids:
+#         try:
+#             mask, mask_array = get_image(conn, image_id)
+#             mask_array = mask_array.squeeze()
+#             mask_list.append(mask_array)
+#             id_list.append(image_id)
+#         except Exception as e:
+#             logger.error(f"Error retrieving segmentation mask: {e}")
+#             raise
+# if viewer_data.labels.size == 0 and mask_list:
+#     viewer_data.labels = np.stack(mask_list, axis=0)
+#     viewer_data.label_ids = id_list
+#     logger.info("Segmentation masks retrieved successfully")
+# elif mask_list:
+#     # If not empty, stack the new images along the index axis
+#     viewer_data.labels = np.concatenate(
+#         (viewer_data.labels, np.stack(mask_list, axis=0)), axis=0
+#     )
+#     viewer_data.label_ids.extend(id_list)
+#     logger.info("Segmentation masks added successfully")
+# else:
+#     logger.warning("No segmentation masks found for the plate")
