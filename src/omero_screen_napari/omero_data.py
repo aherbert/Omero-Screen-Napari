@@ -22,7 +22,7 @@ def get_project_id() -> int:
     default_project_id = 0
     dotenv_path = set_env_vars()
     load_dotenv(dotenv_path=dotenv_path, override=True)
-    logger.info(f"Loading environment variables from {dotenv_path}")  # noqa: G004
+    logger.debug(f"Loading environment variables from {dotenv_path}")  # noqa: G004
     return int(os.getenv("PROJECT_ID", default_project_id))
 
 

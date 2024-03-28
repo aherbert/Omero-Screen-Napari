@@ -28,7 +28,7 @@ def test_check_plate_exist(mock_conn, caplog):
         MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection
     )
     user_input._check_plate_id()
-    assert "Processing plate with ID 123" in caplog.text
+    assert "Found plate with ID 123 in omero." in caplog.text
 
 
 def test_check_plate_doesnotexist(mock_conn):
@@ -248,7 +248,7 @@ def test_found_map_annotations(mock_plate):
     channel_manager._plate = plate
     channel_manager._get_map_ann()
 
-    assert channel_manager.map_annotations == map_annotations
+    assert channel_manager._map_annotations == map_annotations
 
 
 def test_filter_channel_data_with_space(mock_plate):
@@ -263,9 +263,9 @@ def test_filter_channel_data_with_space(mock_plate):
     )
     channel_manager = ChannelDataParser(omero_data)
     channel_manager._plate = plate
-    channel_manager.map_annotations = map_annotations
+    channel_manager._map_annotations = map_annotations
     channel_manager._tidy_up_channel_data()
-    assert channel_manager.channel_data == {
+    assert channel_manager._channel_data == {
         "DAPI": "1",
         "Tub": "2",
         "p21": "3",
@@ -285,9 +285,9 @@ def test_filter_channel_data_with_Hoechst(mock_plate):
     )
     channel_manager = ChannelDataParser(omero_data)
     channel_manager._plate = plate
-    channel_manager.map_annotations = map_annotations
+    channel_manager._map_annotations = map_annotations
     channel_manager._tidy_up_channel_data()
-    assert channel_manager.channel_data == {
+    assert channel_manager._channel_data == {
         "DAPI": "1",
         "Tub": "2",
         "p21": "3",
@@ -820,7 +820,7 @@ def test_collect_images(image_parser_with_mocks):
 def flatfield_mock():
     omero_data = OmeroData()
     # Setup a default flatfield_mask, actual values will be overridden in tests
-    omero_data.flatfield_mask = np.ones((1080, 1080))
+    omero_data.flatfield_masks = np.ones((1080, 1080))
     omero_data.image_index = [0, 1]
     return omero_data
 
@@ -860,9 +860,11 @@ def image_parser_setup():
     # Setup a mock for OmeroData with some dummy intensities
     omero_data = OmeroData()
     omero_data.intensities = [
-        (0, 255),
-        (0, 255),
-        (0, 255),
+        {
+            0:(0, 255),
+            1: (0, 255),
+            2: (0, 255),
+        }
     ]  # Example intensities for 3 channels
 
     # Create an instance of your ImageParser with the mocked OmeroData

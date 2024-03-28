@@ -9,19 +9,23 @@ except ImportError:
 
 
 def setup_logging():
-    # Set a less verbose level for the root logger to avoid noisy logs from external libraries
-    logging.basicConfig(
-        level=logging.WARNING,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
-    )
+    # Set a less verbose level for the root logger
+    logging.basicConfig(level=logging.WARNING)
 
     # Create and configure your application's main logger
-    app_logger_name = "omero-screen-napari"  # Use a unique name for your application's logger
+    app_logger_name = "omero-screen-napari"
     app_logger = logging.getLogger(app_logger_name)
-    app_logger.setLevel(logging.DEBUG)  # Or DEBUG, as per your requirement
+    app_logger.setLevel(logging.INFO)  # Set to DEBUG or any other level
 
-    # Optionally, add any specific handlers/formatters to your app logger here
+    # Prevent propagation to the root logger
+    app_logger.propagate = False
 
+    # Create a console handler for the logger
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)  # Ensure it captures all levels processed by the logger
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s")
+    ch.setFormatter(formatter)
+    app_logger.addHandler(ch)
 
 # Ensure this is called when your package is imported
 setup_logging()

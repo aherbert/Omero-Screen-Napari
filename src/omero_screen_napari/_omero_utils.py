@@ -26,6 +26,7 @@ def omero_connect(func):
 
     @functools.wraps(func)
     def wrapper_omero_connect(*args, **kwargs):
+        conn= None
         value = None
         try:
             conn = BlitzGateway(username, password, host=host)
@@ -39,10 +40,11 @@ def omero_connect(func):
                 logger.error(error_msg) 
 # sourcery skip: raise-specific-error
                 raise Exception(error_msg)
-                
+
         finally:
             # No side effects if called without a connection
-            conn.close()
+            if conn:
+                conn.close()
         return value
 
     return wrapper_omero_connect

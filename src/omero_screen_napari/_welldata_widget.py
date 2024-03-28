@@ -6,38 +6,60 @@ The plugin can be run from napari as Welldata Widget under Plugins.
 
 
 # Logging
-import atexit
+
 import logging
-import os
-import re
-import tempfile
-from typing import List, Optional, Tuple
-from pathlib import Path
-import napari
-import numpy as np
-import omero
-import pandas as pd
-from ezomero import get_image
+from typing import Optional
+
 from magicgui import magic_factory
 from napari.viewer import Viewer
-from omero.gateway import BlitzGateway, FileAnnotationWrapper
-from qtpy.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
-from skimage import exposure
-from tqdm import tqdm
+from PyQt5.QtWidgets import QWidget
+from qtpy.QtWidgets import QLabel, QVBoxLayout
 
-from omero_screen_napari.omero_api import retrieve_wells
-from omero_screen_napari._omero_utils import load_dotenv
-from omero_screen_napari.viewer_data_module import (
-    viewer_data,ViewerData
-)
+from omero_screen_napari.omero_data_singleton import omero_data
+from omero_screen_napari.plate_handler import parse_omero_data
 
 # Looging
 
 logger = logging.getLogger("omero-screen-napari")
 
 
+class MetadataWidget(QWidget):
+    """
+    A custom QWidget that displays metadata in a QLabel. The metadata is displayed as key-value pairs.
+
+    Inherits from:
+    QWidget: Base class for all user interface objects in PyQt5.
+
+    Attributes:
+    layout (QVBoxLayout): Layout for the widget.
+    label (QLabel): Label where the metadata is displayed.
+
+    Args:
+    metadata (dict): The metadata to be displayed. It should be a dictionary where the keys are the metadata
+    fields and the values are the metadata values.
+    """
+
+    def __init__(self, metadata):
+        super().__init__()
+        self.layout = QVBoxLayout()
+
+        self.label = QLabel()
+        label_text = "".join(f"{key}: {value}\n" for key, value in metadata.items())
+        self.label.setText(
+            label_text.rstrip()
+        )  # Remove the last newline character
+
+        self.layout.addWidget(self.label)
+        self.setLayout(self.layout)
+
+ # Mock event object with the current_step attribute
+class MockEvent:
+    def __init__(self, source):
+        self.source = source
+
 # Global variable to keep track of the existing metadata widget
-metadata_widget: Optional[QWidget] = None
+metadata_widget: Optional[MetadataWidget] = None
+
 
 # Widget to call Omero and load well images
 
@@ -48,7 +70,6 @@ def welldata_widget(
     plate_id: str = "Plate ID",
     well_pos_list: str = "Well Position",
     images: str = "All",
-    reset_data: bool = False,
 ) -> None:
     """
     This function is a widget for handling well data in a napari viewer.
@@ -56,35 +77,20 @@ def welldata_widget(
     and then adds the images and labels to the viewer. It also handles metadata,
     sets color maps, and adds label layers to the viewer.
     """
-    global metadata_widget
-    if reset_data:
-        # Reset viewer_data to its default state
-        global viewer_data
-        viewer_data = ViewerData()
-        logger.info("Data has been reset.")
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        localenv_path = Path(__file__).resolve().parent.parent / ".localenv"
-        logger.debug('.env_path = %s', env_path)
-        dotenv_path = (
-            localenv_path if os.getenv("USE_LOCAL_ENV") == "1" else env_path
-        )
-        # Load the environment variables
-        load_dotenv(dotenv_path=dotenv_path)
-        project_id = os.getenv("PROJECT_ID")
-        viewer_data.project_id = project_id
-        logger.debug(f"remaining image_ids are {viewer_data.image_ids}")
-    
-    logger.debug("Plate ID: %s", plate_id)
-    logger.debug("Well positions: %s", well_pos_list)
-    well_pos = [item.strip() for item in well_pos_list.split(",")]
-    logger.debug("Well positions: %s", well_pos)
+    parse_omero_data(omero_data, plate_id, well_pos_list, images)
     clear_viewer_layers(viewer)
-    retrieve_wells(plate_id, well_pos, images, viewer_data)
-    logger.debug(f"Image shape is {viewer_data.images.shape}")
     add_image_to_viewer(viewer)
-    handle_metadata_widget(viewer)
     set_color_maps(viewer)
     add_label_layers(viewer)
+
+    def slider_position_change(event):
+        current_position = event.source.current_step[0]
+        handle_metadata_widget(viewer, current_position)
+
+    viewer.dims.events.current_step.connect(slider_position_change)
+    _initial_position = viewer.dims.current_step[0]
+    mock_event = MockEvent(viewer.dims)
+    slider_position_change(mock_event)
 
 
 # accessory functions for _welldata_widget
@@ -93,29 +99,37 @@ def welldata_widget(
 def clear_viewer_layers(viewer: Viewer) -> None:
     while len(viewer.layers) > 0:
         viewer.layers.pop(0)
-   
-    
 
 
 def add_image_to_viewer(viewer: Viewer) -> None:
     viewer.add_image(
-        viewer_data.images, channel_axis=-1, scale=viewer_data.pixel_size
+        omero_data.images, channel_axis=-1, scale=omero_data.pixel_size
     )
     viewer.scale_bar.visible = True
     viewer.scale_bar.unit = "µm"
 
 
-def handle_metadata_widget(viewer: Viewer) -> None:
+# Assuming 'viewer' is your napari Viewer instance
+
+
+def handle_metadata_widget(viewer: Viewer, slider_position: int) -> None:
     global metadata_widget
+
+    # Calculate which well's metadata to use based on the slider position
+    images_per_well = len(omero_data.image_index)
+    well_index = slider_position // images_per_well
+    well_index = min(well_index, len(omero_data.well_metadata_list) - 1)
+
     if metadata_widget is not None:
-        viewer.window.remove_dock_widget(metadata_widget)
-    metadata_widget = MetadataWidget(viewer_data.metadata)
+        viewer.window.remove_dock_widget(metadata_widget)  # type: ignore
+    well_metadata = omero_data.well_metadata_list[well_index]
+    metadata_widget = MetadataWidget(well_metadata)
     viewer.window.add_dock_widget(metadata_widget)
 
 
 def set_color_maps(viewer: Viewer) -> None:
     channel_names: dict = {
-        key: int(value) for key, value in viewer_data.channel_data.items()
+        key: int(value) for key, value in omero_data.channel_data.items()
     }
     color_maps: dict[str, str] = _generate_color_map(channel_names)
     for name, index in channel_names.items():
@@ -125,14 +139,14 @@ def set_color_maps(viewer: Viewer) -> None:
 
 
 def add_label_layers(viewer: Viewer) -> None:
-    scale = viewer_data.pixel_size
-    if len(viewer_data.labels.shape) == 3:
+    scale = omero_data.pixel_size
+    if len(omero_data.labels.shape) == 3:
         viewer.add_labels(
-            viewer_data.labels.astype(int), name="Nuclei Masks", scale=scale
+            omero_data.labels.astype(int), name="Nuclei Masks", scale=scale
         )
-    elif viewer_data.labels.shape[3] == 2:
-        channel_1_masks = viewer_data.labels[..., 0].astype(int)
-        channel_2_masks = viewer_data.labels[..., 1].astype(int)
+    elif omero_data.labels.shape[3] == 2:
+        channel_1_masks = omero_data.labels[..., 0].astype(int)
+        channel_2_masks = omero_data.labels[..., 1].astype(int)
         viewer.add_labels(channel_1_masks, name="Nuclei Masks", scale=scale)
         viewer.add_labels(channel_2_masks, name="Cell Masks", scale=scale)
     else:
@@ -175,38 +189,3 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
     ):
         color_map_dict[remaining_channel] = remaining_color
     return color_map_dict
-
-
-# Add small widget for metadata to get info pn cell line and condition
-class MetadataWidget(QWidget):
-    """
-    A custom QWidget that displays metadata in a QLabel. The metadata is displayed as key-value pairs.
-
-    Inherits from:
-    QWidget: Base class for all user interface objects in PyQt5.
-
-    Attributes:
-    layout (QVBoxLayout): Layout for the widget.
-    label (QLabel): Label where the metadata is displayed.
-
-    Args:
-    metadata (dict): The metadata to be displayed. It should be a dictionary where the keys are the metadata
-    fields and the values are the metadata values.
-    """
-
-    def __init__(self, metadata):
-        super().__init__()
-        self.layout = QVBoxLayout()
-
-        self.label = QLabel()
-        label_text = ""
-        for dict_ in metadata:
-            for key, value in dict_.items():
-                label_text += f"{key}: {value}\n"
-
-        self.label.setText(
-            label_text.rstrip()
-        )  # Remove the last newline character
-
-        self.layout.addWidget(self.label)
-        self.setLayout(self.layout)
