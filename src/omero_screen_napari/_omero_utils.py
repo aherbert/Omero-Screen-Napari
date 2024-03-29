@@ -1,7 +1,6 @@
 import functools
 import logging
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from omero.gateway import BlitzGateway
@@ -37,7 +36,7 @@ def omero_connect(func):
                 logger.info("Disconnecting from Omero")
             else:
                 error_msg = f"Failed to connect to Omero: {conn.getLastError()}"
-                logger.error(error_msg) 
+                logger.error(error_msg)
 # sourcery skip: raise-specific-error
                 raise Exception(error_msg)
 
