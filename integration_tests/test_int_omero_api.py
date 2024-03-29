@@ -134,7 +134,7 @@ def test_flatfield_channel_data_manager(conn=None):
     omero_data.plate_id = 53
     manager = FlatfieldMaskParser(omero_data, conn)
     manager.parse_flatfieldmask()
-    assert omero_data.flatfield_mask.shape == (
+    assert omero_data.flatfield_masks.shape == (
         1,
         1,
         1080,
@@ -205,7 +205,7 @@ def test_parse_plate_data_success(cleanup_csv_directory, conn=None):
         "p21": "2",
         "EdU": "3",
     }
-    assert omero_data.flatfield_mask.shape == (
+    assert omero_data.flatfield_masks.shape == (
         1,
         1,
         1080,
@@ -243,7 +243,7 @@ def test_image_parser(conn=None):
     well_data.parse_well()
     image_data = ImageParser(omero_data, MagicMock(), conn)
     image_data._well = conn.getObject("Well", 105)
-    image_data.parse_images()
+    image_data._parse_images()
     assert omero_data.images.shape == (3, 1080, 1080, 4)
 
 
@@ -257,8 +257,8 @@ def test_label_parser(conn=None):
     well_data.parse_well()
     image_data = ImageParser(omero_data, MagicMock(), conn)
     image_data._well = conn.getObject("Well", 105)
-    image_data.parse_images()
-    image_data.parse_labels()
+    image_data._parse_images()
+    image_data._parse_labels()
 
 
 @omero_connect
