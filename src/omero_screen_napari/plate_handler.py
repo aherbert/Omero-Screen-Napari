@@ -835,6 +835,11 @@ class WellDataParser:
             )
 
     def _parse_well_object(self):
+        """
+        Check if the well object exists in the plate and retrieve it.
+        Raises:
+            ValueError: _description_
+        """
         well_found = False
         for well in self._plate.listChildren():
             if well.getWellPos() == self._well_pos:
@@ -852,28 +857,40 @@ class WellDataParser:
             )
 
     def _get_well_metadata(self):
+        """
+        Get metadata for the well from the map annotations.
+        The map annotations have to include a dictionary with a key "cell_line" to be valid.
+        Raises:
+            ValueError: If the well object is not found.
+        """
         map_ann = None
         if not self._well:
-            raise ValueError(
-                f"No map annotation found for well {self._well_pos}"
-            )
+            raise ValueError(f"Well at pos {self._well_pos} not found")
         for ann in self._well.listAnnotations():
-            try:
-                if ann:
-                    ann.getValue()
-                    map_ann = dict(ann.getValue())
-                    if "cell_line" in map_ann:
-                        self._metadata = map_ann
-                        break
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    f"Error retrieving metadata for well {self._well_pos}: {e}"
-                )
+            if ann:
+                ann.getValue()
+                map_ann = dict(ann.getValue())
+                if "cell_line" in map_ann:
+                    self._metadata = map_ann
+                    break
+                else:
+                    logger.error(
+                        f"No metadata with cell line name found for well {self._well_pos}"
+                    )
+                    raise ValueError(
+                        f"No metadata with cell line name found for well {self._well_pos}"
+                    )
+            else:
+                logger.error(f"No map annotations found for well {self._well_pos}")
                 raise ValueError(
-                    f"Error retrieving metadata for well {self._well_pos}: {e}"
-                ) from e
+                    f"No map annotations found for well {self._well_pos}"
+                )
 
     def _load_well_csvdata(self):
+        """
+        Load the csv data for the well using the polars lazyframe to
+        filter out the required data for the well.
+        """
         df = self._omero_data.plate_data
         self._well_ifdata = df.filter(
             pl.col("well") == self._well_pos
@@ -912,6 +929,11 @@ class ImageParser:
         logger.info("Images and labels added to omero_data")
 
     def _parse_images(self):
+        """
+        Collects images for the well and adds them to the omero_data object.
+        If the omero_data object already has images, the new images are concatenated to the existing images.
+        Otherwise, the new images are added to the omero_data object.
+        """
         self._collect_images()
         if self._omero_data.images.shape == (0,):
             self._omero_data.images = np.squeeze(
@@ -934,7 +956,11 @@ class ImageParser:
             self._omero_data.image_ids.extend(self._image_ids)
 
     def _parse_labels(self):
-        # self._check_label_data()
+        """
+        Collects labels for the well and adds them to the omero_data object.
+        If the omero_data object already has labels, the new labels are concatenated to the existing labels.
+        Otherwise, the new labels are added to the omero_data object.
+        """
         self._collect_labels()
         if self._omero_data.labels.size == 0:
             self._omero_data.labels = np.stack(self._label_arrays, axis=0)
@@ -951,6 +977,9 @@ class ImageParser:
             )
 
     def _collect_images(self):
+        """
+        Collects images and image arrays for the well and adds the to the image_ids and image_arrays list.
+        """
         logger.info(f"Collecting images for well {self._well.getWellPos()}")
         for index in tqdm(self._image_index):
             if image := self._well.getImage(index):
@@ -964,6 +993,15 @@ class ImageParser:
                 self._image_ids.append(image.getId())
 
     def _flatfield_correct_image(self, image_array):
+        """
+        Corrects the image array using the flatfield mask for the well.
+
+        Args:
+            image_array (np.ndarray): Image array to be corrected.
+
+        Returns:
+           np.ndarray: Corrected image array.
+        """
         corrected_array = image_array / self._omero_data.flatfield_masks
         if len(corrected_array.shape) == 2:
             corrected_array = corrected_array[..., np.newaxis]
@@ -971,6 +1009,14 @@ class ImageParser:
         return corrected_array
 
     def _scale_images(self, corrected_array):
+        """
+        Scales the image array to increase contrast.
+        Args:
+            corrected_array (np.ndarray): flatfield corrected image arrays
+
+        Returns:
+            np.ndarray: scaled and flatfield corrected arrays
+        """
         scaled_channels = []
         logger.debug(f"omero_data.intensities: {self._omero_data.intensities}")
         for i in range(corrected_array.shape[-1]):

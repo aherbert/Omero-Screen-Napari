@@ -17,6 +17,20 @@ from omero_screen_napari.plate_handler import (
 )
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @pytest.fixture
 def mock_plate_for_input_test():
     # Create a mock for the Well object with listChildren method
@@ -285,6 +299,12 @@ def mock_plate_well():
 @pytest.fixture
 def mock_annotation_with_value():
     annotation = MagicMock()
+    annotation.getValue.return_value = {'cell_line': 'RPE-1'}
+    return annotation
+
+@pytest.fixture
+def mock_annotation_without_cell_line():
+    annotation = MagicMock()
     annotation.getValue.return_value = {'key': 'value'}
     return annotation
 
@@ -299,11 +319,15 @@ def well_with_annotations(mock_annotation_with_value):
     well = MagicMock()
     well.listAnnotations.return_value = [mock_annotation_with_value]
     return well
-
 @pytest.fixture
-def well_without_annotations(mock_annotation_without_value):
+def well_without_cell_line_annotations(mock_annotation_without_cell_line):
     well = MagicMock()
-    well.listAnnotations.return_value = [mock_annotation_without_value]
+    well.listAnnotations.return_value = [mock_annotation_without_cell_line]
+    return well
+@pytest.fixture
+def well_without_annotations():
+    well = MagicMock()
+    well.listAnnotations.return_value = [None]
     return well
 
 @pytest.fixture

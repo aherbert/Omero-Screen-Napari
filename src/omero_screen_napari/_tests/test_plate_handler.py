@@ -20,7 +20,7 @@ from omero_screen_napari.plate_handler import (
 
 
 # __________________________TESTING INPUT DATA PARSER________________________________
-def test_check_plate_exist(mock_conn, caplog):
+def test_check_plate_id_exist(mock_conn, caplog):
     plate_id = 123
     caplog.set_level(logging.INFO)
     mock_connection = mock_conn(plate_id, MagicMock())
@@ -28,7 +28,7 @@ def test_check_plate_exist(mock_conn, caplog):
         MagicMock(), plate_id, MagicMock(), MagicMock(), mock_connection
     )
     user_input._check_plate_id()
-    assert "Found plate with ID 123 in omero." in caplog.text
+    assert user_input._plate.getId() == 123
 
 
 def test_check_plate_doesnotexist(mock_conn):
@@ -41,6 +41,36 @@ def test_check_plate_doesnotexist(mock_conn):
         user_input._check_plate_id()
     assert "Plate with ID 124 does not exist" in str(exc_info.value)
 
+def test_load_dataset_success(mock_conn):
+    # Setup mock connection with a project and a dataset
+    project_id = omero_data.project_id
+    omero_data.plate_id = 123
+    datasets = {"124": 457, "123": 456}  # Dataset name and its ID
+    mock_connection = mock_conn(project_id, datasets)
+    manager = UserInput(omero_data, omero_data.plate_id, MagicMock(), MagicMock(), mock_connection)
+
+    # Perform the test
+    manager._load_dataset()
+
+    # Verify the dataset is correctly assigned to omero_data.screen_dataset
+    assert (
+        omero_data.screen_dataset.getId() == 456
+    ), "The dataset was not assigned."
+
+
+def test_load_dataset_failure(mock_conn):
+    # Setup mock connection with a project and a dataset
+    project_id = omero_data.project_id
+    omero_data.plate_id = 122
+    datasets = {"124": 457, "123": 458}
+    mock_connection = mock_conn(project_id, datasets)
+    manager = UserInput(omero_data, omero_data.plate_id, MagicMock(), MagicMock(), mock_connection)
+
+    # Perform the test
+    with pytest.raises(ValueError) as exc_info:
+        manager._load_dataset()
+    # Verify the error message
+    assert "The plate  has not been assigned a dataset" in str(exc_info.value)
 
 def test_parse_image_number(mock_plate_for_input_test):
     user_input = UserInput(
@@ -298,35 +328,6 @@ def test_filter_channel_data_with_Hoechst(mock_plate):
 # __________________________TESTING FLATFIELD CORRECTION MASK MANAGER________________________________
 
 
-def test_load_dataset_success(mock_conn):
-    # Setup mock connection with a project and a dataset
-    project_id = omero_data.project_id
-    omero_data.plate_id = 123
-    datasets = {"124": 457, "123": 456}  # Dataset name and its ID
-    mock_connection = mock_conn(project_id, datasets)
-    manager = FlatfieldMaskParser(omero_data, mock_connection)
-
-    # Perform the test
-    manager._load_dataset()
-
-    # Verify the dataset is correctly assigned to omero_data.screen_dataset
-    assert (
-        omero_data.screen_dataset.getId() == 456
-    ), "The dataset was not assigned."
-
-
-def test_load_dataset_failure(mock_conn):
-    # Setup mock connection with a project and a dataset
-    project_id = omero_data.project_id
-    omero_data.plate_id = 122
-    datasets = {"124": 457, "123": 458}
-    mock_connection = mock_conn(project_id, datasets)
-    manager = FlatfieldMaskParser(omero_data, mock_connection)
-    # Perform the test
-    with pytest.raises(ValueError) as exc_info:
-        manager._load_dataset()
-    # Verify the error message
-    assert "The plate  has not been assigned a dataset" in str(exc_info.value)
 
 
 class MockImage:
@@ -720,7 +721,18 @@ def test_get_well_metadata_with_valid_annotations(
     monkeypatch.setattr(manager, "_well_pos", "A1")
 
     manager._get_well_metadata()
-    assert manager._metadata == {"key": "value"}
+
+    assert manager._metadata == {"cell_line": "RPE-1"}
+def test_get_well_metadata_with_no_cell_line_annotations(
+    monkeypatch, well_without_cell_line_annotations
+):
+    manager = WellDataParser(MagicMock(), "A1")
+    monkeypatch.setattr(manager, "_well", well_without_cell_line_annotations)
+    monkeypatch.setattr(manager, "_well_pos", "A1")
+
+    with pytest.raises(ValueError) as e:
+        manager._get_well_metadata()
+    assert f"No metadata with cell line name found for well {manager._well_pos}" in str(e.value)
 
 
 def test_get_well_metadata_with_no_valid_annotations(
@@ -732,7 +744,7 @@ def test_get_well_metadata_with_no_valid_annotations(
 
     with pytest.raises(ValueError) as e:
         manager._get_well_metadata()
-    assert "No map annotation found for well A1" in str(e.value)
+    assert "No map annotations found for well A1" in str(e.value)
 
 
 def test_load_well_csvdata(omero_data_lazyframe_mock):
@@ -757,8 +769,11 @@ def test_load_well_csvdata(omero_data_lazyframe_mock):
 
 @pytest.fixture
 def image_parser_with_mocks():
+
     # Setup mocks
-    mock_get_image = MagicMock(return_value=(123, np.zeros((1080, 1080, 3))))
+    mock_image = MagicMock()
+    mock_image.getId.return_value = 123 
+    mock_get_image = MagicMock(return_value=(mock_image, np.zeros((1080, 1080, 3))))
 
     # Since the _scale_images method should not alter the shape of the array, we use the same shape for the mock return value
     mock_scale_images = MagicMock(
@@ -843,9 +858,9 @@ def flatfield_mock():
 def test_flatfield_correct_image(
     image_array, flatfield_mask, expected_shape, flatfield_mock
 ):
-    flatfield_mock.flatfield_mask = flatfield_mask
+    flatfield_mock.flatfield_masks = flatfield_mask
     parser = ImageParser(
-        omero_data=flatfield_mock, well=None, conn=None
+        omero_data=flatfield_mock, well=MagicMock(), conn=MagicMock()
     )  # Mock well and conn as necessary
 
     corrected_array = parser._flatfield_correct_image(image_array)
@@ -859,17 +874,16 @@ def test_flatfield_correct_image(
 def image_parser_setup():
     # Setup a mock for OmeroData with some dummy intensities
     omero_data = OmeroData()
-    omero_data.intensities = [
-        {
+    omero_data.intensities ={
             0:(0, 255),
             1: (0, 255),
             2: (0, 255),
         }
-    ]  # Example intensities for 3 channels
+
 
     # Create an instance of your ImageParser with the mocked OmeroData
     return ImageParser(
-        omero_data=omero_data, well=None, conn=None
+        omero_data=omero_data, well=MagicMock(), conn=MagicMock()
     )  # Assuming well and conn can be None for this test
 
 
@@ -905,3 +919,74 @@ def test_scale_images(input_shape, expected_output_shape, image_parser_setup):
         assert (
             mock_scale_img.call_count == input_shape[-1]
         ), f"_scale_img was called {mock_scale_img.call_count} times, expected {input_shape[-1]}"
+
+@pytest.fixture
+def omero_data_label_mock():
+    mock = MagicMock()
+    # Mocking listChildren to return a list of mock images with predefined names
+    mock.screen_dataset.listChildren.return_value = [
+        MagicMock(getName=lambda: "1_label"),
+        MagicMock(getName=lambda: "2_label"),
+        MagicMock(getName=lambda: "3_label"),
+    ]
+
+    return mock
+
+def test_check_label_data_success(omero_data_label_mock):
+    # Case where all image IDs are found in label names
+    manager = ImageParser(omero_data_label_mock, well=MagicMock(), conn=MagicMock())
+    manager._image_ids = [1, 2, 3]
+    # This should not raise an exception
+    manager._check_label_data()
+
+def test_check_label_data_failure(omero_data_label_mock):
+    # Case where all image IDs are found in label names
+    manager = ImageParser(omero_data_label_mock, well=MagicMock(), conn=MagicMock())
+    manager._image_ids = [1, 2, 4]
+
+    with pytest.raises(ValueError) as e:
+        manager._check_label_data()
+    assert "Available label images do not match loaded images" in str(e.value)
+
+
+@pytest.fixture
+def omero_data_mock_collect_labels():
+    mock = MagicMock()
+    # Mocking listChildren to simulate the presence of label data with specific names
+    mock.screen_dataset.listChildren.return_value = [
+        MagicMock(getName=lambda: "1_segmentation", getId=lambda: 101),
+        MagicMock(getName=lambda: "2_segmentation", getId=lambda: 102),
+        MagicMock(getName=lambda: "3_nonrelevant", getId=lambda: 103),
+    ]
+    return mock
+
+@patch("omero_screen_napari.plate_handler.get_image")
+def test_collect_labels(mock_get_image, omero_data_mock_collect_labels):
+    # Setup the mocks
+    mock_get_image.side_effect = [
+        (MagicMock(), np.zeros((1080, 1080))),
+        (MagicMock(), np.zeros((1080, 1080))),
+        (MagicMock(), np.zeros((1080, 1080))),
+    ]
+    manager = ImageParser(omero_data_mock_collect_labels, well=MagicMock(), conn=MagicMock())
+    manager._image_ids = [101, 102, 103]
+
+    # Execute the method under test
+    manager._collect_labels()
+
+    # Verify that get_image was called the expected number of times
+    assert mock_get_image.call_count == 3
+
+    # Verify that the collected labels are stored correctly
+    assert len(manager._label_arrays) == 2
+    assert len(manager._label_ids) == 2
+    assert len(manager._label_names) == 2
+
+    # Verify that the label arrays have the expected shape
+    for array in manager._label_arrays:
+        assert array.shape == (1080, 1080)
+
+    # Verify that the label IDs and names are correct
+    assert manager._label_ids == [101, 102]
+    assert manager._label_names == ["1_segmentation", "2_segmentation"]
+    
