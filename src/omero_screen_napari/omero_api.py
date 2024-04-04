@@ -21,7 +21,7 @@ from qtpy.QtWidgets import QMessageBox
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari._omero_utils import omero_connect, load_dotenv
+from omero_screen_napari.utils import omero_connect, load_dotenv
 
 # Looging
 

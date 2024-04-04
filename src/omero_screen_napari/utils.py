@@ -2,12 +2,15 @@ import functools
 import logging
 import os
 
+import numpy as np
 from dotenv import load_dotenv
 from omero.gateway import BlitzGateway
+from skimage import exposure
 
 from omero_screen_napari import set_env_vars
 
 logger = logging.getLogger("omero-screen-napari")
+
 
 def omero_connect(func):
     """
@@ -25,7 +28,7 @@ def omero_connect(func):
 
     @functools.wraps(func)
     def wrapper_omero_connect(*args, **kwargs):
-        conn= None
+        conn = None
         value = None
         try:
             conn = BlitzGateway(username, password, host=host)
@@ -35,9 +38,11 @@ def omero_connect(func):
                 conn.close()
                 logger.info("Disconnecting from Omero")
             else:
-                error_msg = f"Failed to connect to Omero: {conn.getLastError()}"
+                error_msg = (
+                    f"Failed to connect to Omero: {conn.getLastError()}"
+                )
                 logger.error(error_msg)
-# sourcery skip: raise-specific-error
+                # sourcery skip: raise-specific-error
                 raise Exception(error_msg)
 
         finally:
@@ -65,3 +70,15 @@ def attach_file_to_well(well, file_path, conn):
         desc=description,
     )
     well.linkAnnotation(file_ann)
+
+
+def scale_image(
+    img: np.ndarray, intensities: dict[int, tuple[int, int]]
+) -> np.ndarray:
+    scaled_channels = []
+    for i in range(img.shape[-1]):
+        scaled_channel = exposure.rescale_intensity(
+            img[..., i], in_range=intensities[i] # type: ignore
+        )
+        scaled_channels.append(scaled_channel)
+    return np.stack(scaled_channels, axis=-1)

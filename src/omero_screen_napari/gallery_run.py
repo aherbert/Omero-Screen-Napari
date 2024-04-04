@@ -10,7 +10,7 @@ os.environ["USE_LOCAL_ENV"] = "0"
 
 from omero_screen_napari._gallery_widget import show_gallery
 from omero_screen_napari.omero_api import retrieve_data
-from omero_screen_napari._omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.viewer_data_module import viewer_data
 
 plate_id = 1821

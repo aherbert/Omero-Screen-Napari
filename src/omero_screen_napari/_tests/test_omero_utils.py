@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from omero_screen_napari._omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 
 
 # Mock the logger to avoid side effects during testing

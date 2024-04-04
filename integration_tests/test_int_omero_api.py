@@ -8,7 +8,7 @@ import pytest
 
 os.environ["USE_LOCAL_ENV"] = "1"
 
-from omero_screen_napari._omero_utils import omero_connect  # noqa: E402, I001
+from omero_screen_napari.utils import omero_connect  # noqa: E402, I001
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.plate_handler import (

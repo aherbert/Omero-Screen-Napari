@@ -20,7 +20,7 @@ from omero_screen_napari._gallery_widget import (
     draw_contours,
     fill_missing_channels,
 )
-from omero_screen_napari._omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 from omero_screen_napari._handle_traningdata import (
     get_saved_data,
     save_trainingdata,

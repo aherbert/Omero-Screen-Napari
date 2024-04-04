@@ -26,7 +26,7 @@ from qtpy.QtWidgets import QMessageBox
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari._omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import (
     omero_data,
@@ -988,7 +988,7 @@ class ImageParser:
                     image_array
                 )
                 self._image_arrays.append(
-                    self._scale_images(flatfield_corrected_image)
+                    flatfield_corrected_image
                 )
                 self._image_ids.append(image.getId())
 
@@ -1008,29 +1008,6 @@ class ImageParser:
         logger.debug(f"Corrected image shape: {corrected_array.shape}")
         return corrected_array
 
-    def _scale_images(self, corrected_array):
-        """
-        Scales the image array to increase contrast.
-        Args:
-            corrected_array (np.ndarray): flatfield corrected image arrays
-
-        Returns:
-            np.ndarray: scaled and flatfield corrected arrays
-        """
-        scaled_channels = []
-        logger.debug(f"omero_data.intensities: {self._omero_data.intensities}")
-        for i in range(corrected_array.shape[-1]):
-            scaled_channel = self._scale_img(
-                corrected_array[..., i], self._omero_data.intensities[i]
-            )
-            scaled_channels.append(scaled_channel)
-        return np.stack(scaled_channels, axis=-1)
-
-    def _scale_img(
-        self, img: np.ndarray, intensities: tuple[int, int]
-    ) -> np.ndarray:
-        """Increase contrast by scaling image to exclude lowest and highest intensities"""
-        return exposure.rescale_intensity(img, in_range=intensities)  # type: ignore
 
     def _check_label_data(self):
         label_names = [

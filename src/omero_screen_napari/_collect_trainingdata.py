@@ -3,7 +3,7 @@ import pandas as pd
 
 import omero
 
-from omero_screen_napari._omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.viewer_data_module import cropped_images
 
 @omero_connect
