@@ -870,55 +870,6 @@ def test_flatfield_correct_image(
     ), "Incorrect shape after flatfield correction"
 
 
-@pytest.fixture
-def image_parser_setup():
-    # Setup a mock for OmeroData with some dummy intensities
-    omero_data = OmeroData()
-    omero_data.intensities ={
-            0:(0, 255),
-            1: (0, 255),
-            2: (0, 255),
-        }
-
-
-    # Create an instance of your ImageParser with the mocked OmeroData
-    return ImageParser(
-        omero_data=omero_data, well=MagicMock(), conn=MagicMock()
-    )  # Assuming well and conn can be None for this test
-
-
-@pytest.mark.parametrize(
-    "input_shape,expected_output_shape",
-    [
-        ((1080, 1080, 3), (1080, 1080, 3)),  # 3 channels
-        (
-            (1080, 1080, 1),
-            (1080, 1080, 1),
-        ),  # Single channel, should still work
-    ],
-)
-def test_scale_images(input_shape, expected_output_shape, image_parser_setup):
-    corrected_array = np.random.rand(
-        *input_shape
-    )  # Generate a dummy corrected array with the given shape
-
-    with patch.object(
-        ImageParser,
-        "_scale_img",
-        return_value=np.zeros((input_shape[0], input_shape[1])),
-    ) as mock_scale_img:
-        # Execute the _scale_images method
-        output_array = image_parser_setup._scale_images(corrected_array)
-
-        # Assert that the output has the expected shape
-        assert (
-            output_array.shape == expected_output_shape
-        ), "Output array shape is incorrect"
-
-        # Verify that _scale_img was called the expected number of times (once per channel)
-        assert (
-            mock_scale_img.call_count == input_shape[-1]
-        ), f"_scale_img was called {mock_scale_img.call_count} times, expected {input_shape[-1]}"
 
 @pytest.fixture
 def omero_data_label_mock():

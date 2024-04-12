@@ -69,7 +69,7 @@ class OmeroData:
     well_id_list: list[int] = field(default_factory=list)
     well_metadata_list: list[dict] = field(default_factory=list)
     well_ifdata: pl.DataFrame = field(default_factory=pl.DataFrame)
-    well_image_index: list[int] = field(default_factory=list)
+    #well_image_index: list[int] = field(default_factory=list)
 
     # Image data
     images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
@@ -78,6 +78,14 @@ class OmeroData:
 
     # Stitched images
     stitched_images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
+
+    # gallery data
+    cropped_images: list[np.ndarray] = field(default_factory=list)
+    cropped_labels: list[np.ndarray] = field(default_factory=list)
+    selected_images: list[np.ndarray] = field(default_factory=list)
+    selected_labels: list[np.ndarray] = field(default_factory=list)
+
+
 
     def reset(self):
         """

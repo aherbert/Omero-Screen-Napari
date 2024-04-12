@@ -89,7 +89,8 @@ def test_select_wells_success(mock_user_data):
     mock_omero_data.images = np.random.rand(
         6, 1080, 1080, 2
     )  # Assuming 3 images per well for simplicity
-
+    mock_omero_data.channel_data = {"DAPI": 0, "EdU": 1}
+    mock_omero_data.intensities = {0: (0, 255), 1: (0, 255)}
     mock_user_data.well = "A1"
 
     # Instance of your parser
