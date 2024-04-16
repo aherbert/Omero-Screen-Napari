@@ -1,50 +1,45 @@
 import logging
 import random
 from typing import Optional
+from pathlib import Path
+import datetime
+
+from omero.gateway import BlitzGateway, PlateWrapper
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from pydantic import BaseModel, validator
+
+from qtpy.QtWidgets import QMessageBox
 from skimage.measure import find_contours, label, regionprops
 
 from omero_screen_napari.omero_data import OmeroData
-from omero_screen_napari.utils import scale_image
+from omero_screen_napari.gallery_userdata import UserData
+from omero_screen_napari.welldata_api import well_image_parser
+from omero_screen_napari.utils import omero_connect, scale_image, save_fig
 
 logger = logging.getLogger("omero-screen-napari")
 
 
-class UserData(BaseModel):
-    well: str
-    segmentation: str
-    replacement: str
-    crop_size: int
-    cellcycle: str
-    columns: int
-    rows: int
-    contour: bool
-    channels: list[str]
+def show_gallery(omero_data: OmeroData, user_data: UserData):
+    try:
+        if user_data.reload == "Yes" or omero_data.cropped_images == []:
+            cropped_image_parser = CroppedImageParser(omero_data, user_data)
+            cropped_image_parser.parse_crops()
 
-    _omero_data_channel_keys = []
-
-    @validator("channels", pre=True, always=True)
-    def check_channels(cls, value):
-        if not cls._omero_data_channel_keys:
-            raise ValueError("omero_data.channel_data has not been set.")
-
-        if not value:
-            raise ValueError("No channels have been selected")
-
-        for channel in value:
-            if channel not in cls._omero_data_channel_keys:
-                raise ValueError(
-                    f"{channel} is not a valid key in omero_data.channel_data"
-                )
-        return value
-
-    @classmethod
-    def set_omero_data_channel_keys(cls, channel_keys):
-        cls._omero_data_channel_keys = channel_keys
+        random_image_parser = RandomImageParser(omero_data, user_data)
+        random_image_parser.parse_random_images()
+        gallery_parser = ParseGallery(omero_data, user_data)
+        gallery_parser.plot_gallery()
+    except Exception as e:  # noqa: BLE001
+        logger.error(e)
+        # Show a message box with the error message
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(str(e))
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
 
 
 class CroppedImageParser:
@@ -439,7 +434,7 @@ def fill_missing_channels(img, channels):
         # If there's only one non-empty channel, ensure it's placed at the front
         result_img = [img[..., 0], empty_image, empty_image]
     elif num_non_empty == 2:
-        result_img = [img[..., 0], img[..., 1],empty_image]
+        result_img = [img[..., 0], img[..., 1], empty_image]
     else:
         result_img = [img[..., 2], img[..., 1], img[..., 0]]
     return np.stack(result_img, axis=-1)
@@ -459,15 +454,20 @@ def draw_contours(img, label):
 
 
 class ParseGallery:
-    def __init__(self, omero_data: OmeroData, user_data: UserData):
+    def __init__(
+        self, omero_data: OmeroData, user_data: UserData, show_gallery=True
+    ):
         self._omero_data: OmeroData = omero_data
         self._user_data: UserData = user_data
         self._gallery_image: np.ndarray = np.empty((0,))
         self._metadata: dict[str, str] = {}
+        self._show_gallery = show_gallery
 
     def plot_gallery(self):
         padding_height, padding_width = self._calculate_dynamic_padding()
-        self._gallery_image = self._create_gallery_image(padding_height, padding_width)
+        self._gallery_image = self._create_gallery_image(
+            padding_height, padding_width
+        )
         self._parse_metadata()
         return self._build_gallery()
 
@@ -492,7 +492,8 @@ class ParseGallery:
         # Add scale bar
         self._add_scale_bar(ax)
         logger.info("plotting gallery")
-        plt.show(block=True)
+        if self._show_gallery:
+            plt.show(block=False)
         return fig
 
     def _create_gallery_image(
@@ -583,4 +584,89 @@ class ParseGallery:
         )
 
 
-# Helper Functions for Gallery Constructor
+# -----------------------------Well Galleries-----------------------------------
+
+
+@omero_connect
+def run_gallery_parser(
+    omero_data: OmeroData,
+    user_data: UserData,
+    well_input: list[str],
+    conn: Optional[BlitzGateway] = None,
+):
+    if conn:
+        try:
+            gallery_path = _manage_path(omero_data)
+            well_list = _get_wells(omero_data, well_input, conn)
+            for well in well_list:
+                _save_gallery(omero_data, user_data, well, gallery_path, conn)
+        except Exception as e:
+            logger.error(e)
+            raise e
+
+
+def _manage_path(omero_data: OmeroData):
+    DEFAULT_PATH = Path.home() / "Omero-Screen-Galleries"
+    DEFAULT_PATH.mkdir(exist_ok=True)
+    experiment = f"{omero_data.plate_id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    experiment_path = DEFAULT_PATH / experiment
+    experiment_path.mkdir(exist_ok=True)
+    print(f"Creating directory at {experiment_path}")
+    return experiment_path
+
+
+def _get_wells(omero_data: OmeroData, well_input: list[str], conn: BlitzGateway):
+    plate = conn.getObject("Plate", omero_data.plate_id)
+    well_list = [well.getWellPos() for well in plate.listChildren()]  # type: ignore
+    if well_input == ["All"]:
+        return well_list
+    else:
+        return [well for well in well_input if well in well_list]
+
+
+def _save_gallery(
+    omero_data: OmeroData,
+    userdata: UserData,
+    wellpos: str,
+    path,
+    conn: BlitzGateway,
+):
+    _reset_data(omero_data, userdata, wellpos, conn)
+    well_image_parser(omero_data, wellpos, conn)
+    cropped_image_parser = CroppedImageParser(omero_data, userdata)
+    cropped_image_parser.parse_crops()
+    random_image_parser = RandomImageParser(omero_data, userdata)
+    random_image_parser.parse_random_images()
+    gallery_parser = ParseGallery(omero_data, userdata, show_gallery=False)
+    fig = gallery_parser.plot_gallery()
+    save_fig(
+        fig,
+        path,
+        f"{omero_data.plate_id}_{wellpos}_gallery",
+        fig_extension="pdf",
+    )
+
+
+def _reset_data(
+    omero_data: OmeroData, userdata: UserData, wellpos: str, conn: BlitzGateway
+):
+    omero_data.reset_well_and_image_data()
+    # omero_data.cropped_images == [np.empty((0,))]
+    # omero_data.cropped_labels == [] 
+    omero_data.well_pos_list = [wellpos]
+    userdata.well = wellpos
+    if plate := conn.getObject("Plate", omero_data.plate_id):
+        omero_data.plate = plate
+    else:
+        raise ValueError(f"Error connection to plate {omero_data.plate_id}")
+    # Check if both project and dataset can be retrieved, and then assign dataset to omero_data.screen_dataset
+    if (project := conn.getObject("Project", omero_data.project_id)) and (
+        dataset := conn.getObject(
+            "Dataset",
+            attributes={"name": str(omero_data.plate_id)},
+            opts={"project": project.getId()},
+        )
+    ):
+        omero_data.screen_dataset = dataset
+    else:
+        raise ValueError(f"Error connection to project {omero_data.project_id}")

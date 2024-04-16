@@ -10,7 +10,7 @@ from omero.gateway import (
     ProjectWrapper,
 )
 
-from omero_screen_napari.plate_handler import (
+from omero_screen_napari.welldata_api import (
     ChannelDataParser,
     CsvFileParser,
     OmeroData,

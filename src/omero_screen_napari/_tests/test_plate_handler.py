@@ -7,7 +7,7 @@ import pytest
 
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
-from omero_screen_napari.plate_handler import (
+from omero_screen_napari.welldata_api import (
     ChannelDataParser,
     CsvFileParser,
     FlatfieldMaskParser,

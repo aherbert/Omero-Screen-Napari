@@ -16,7 +16,7 @@ from napari.viewer import Viewer
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from omero_screen_napari.omero_data_singleton import omero_data
-from omero_screen_napari.plate_handler import parse_omero_data
+from omero_screen_napari.welldata_api import parse_omero_data
 
 # Looging
 
@@ -126,7 +126,7 @@ def on_contrast_change(event):
         # Access the layer through the event's source attribute
         layer = event.source
         channel_number = int(omero_data.channel_data[layer.name])
-        omero_data.intensities[channel_number] = layer.contrast_limits
+        omero_data.intensities[channel_number] = tuple(layer.contrast_limits)
        
 
 
