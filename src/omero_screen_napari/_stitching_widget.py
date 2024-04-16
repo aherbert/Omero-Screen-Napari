@@ -24,7 +24,7 @@ from qtpy.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari.omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.viewer_data_module import viewer_data
 
 # Looging

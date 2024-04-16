@@ -4,7 +4,7 @@ import tempfile
 import numpy as np
 import omero
 
-from omero_screen_napari.omero_utils import omero_connect
+from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.viewer_data_module import cropped_images
 
 
