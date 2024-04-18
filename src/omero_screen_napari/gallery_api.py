@@ -328,7 +328,7 @@ class RandomImageParser:
     def parse_random_images(self):
         self._parse_random_index()
         self._parse_random_images()
-        self._check_identical_arrays()
+        #self._check_identical_arrays()
         self._omero_data.cropped_images = self._remove_chosen_crops(
             self._omero_data.cropped_images
         )
