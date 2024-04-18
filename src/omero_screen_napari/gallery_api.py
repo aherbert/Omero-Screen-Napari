@@ -79,7 +79,9 @@ class CroppedImageParser:
 
     def _select_labels(self) -> np.ndarray:
         labels = self._omero_data.labels[self._start_idx : self._end_idx, ...]
-        if self._user_data.segmentation == "nucleus":
+        if len(labels.shape) == 3:
+            return labels
+        elif self._user_data.segmentation == "nucleus":
             return labels[..., 0]
         elif self._user_data.segmentation == "cell":
             return labels[..., 1]

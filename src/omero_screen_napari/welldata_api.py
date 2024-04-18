@@ -867,8 +867,7 @@ class WellDataParser:
         if not self._well:
             raise ValueError(f"Well at pos {self._well_pos} not found")
         for ann in self._well.listAnnotations():
-            if ann:
-                ann.getValue()
+            if ann and ann.getValue():
                 map_ann = dict(ann.getValue())
                 if "cell_line" in map_ann:
                     self._metadata = map_ann
@@ -880,11 +879,11 @@ class WellDataParser:
                     raise ValueError(
                         f"No metadata with cell line name found for well {self._well_pos}"
                     )
-            else:
-                logger.error(f"No map annotations found for well {self._well_pos}")
-                raise ValueError(
-                    f"No map annotations found for well {self._well_pos}"
-                )
+        if not self._metadata:
+            logger.error(f"No map annotations found for well {self._well_pos}")
+            raise ValueError(
+                f"No map annotations found for well {self._well_pos}"
+            )
 
     def _load_well_csvdata(self):
         """
