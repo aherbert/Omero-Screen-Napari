@@ -593,9 +593,23 @@ class FlatfieldMaskParser:
         logger.debug(
             f"Flatfield channels: {self._flatfield_channels.values()}, channel data {omero_data.channel_data.keys()}"  # noqa: G004
         )
-        if list(self._flatfield_channels.values()) != list(
-            omero_data.channel_data.keys()
-        ):
+        channel_check = True
+        for key, value in self._flatfield_channels.items():
+            # Extract the number from key, e.g., 'channel_1' -> '1'
+            channel_number = key.split('_')[-1]
+        
+            # Find the channel name that corresponds to this number in channels
+            expected_name = None
+            for name, num in self._omero_data.channel_data.items():
+                if num == channel_number:
+                    expected_name = name
+                    break
+            # Check if the expected name matches the name in flatfield_channels
+            if expected_name != value:
+                channel_check = False
+                break
+    
+        if not channel_check:
             error_message = "Inconsistency found: flatfield_mask and plate_map have different channels"
             logger.error(error_message)
             raise InconsistencyError(error_message)

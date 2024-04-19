@@ -15,14 +15,14 @@ def setup_logging():
     # Create and configure your application's main logger
     app_logger_name = "omero-screen-napari"
     app_logger = logging.getLogger(app_logger_name)
-    app_logger.setLevel(logging.INFO)  # Set to DEBUG or any other level
+    app_logger.setLevel(logging.DEBUG)  # Set to DEBUG or any other level
 
     # Prevent propagation to the root logger
     app_logger.propagate = False
 
     # Create a console handler for the logger
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)  # Ensure it captures all levels processed by the logger
+    ch.setLevel(logging.INFO)  # Ensure it captures all levels processed by the logger
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s")
     ch.setFormatter(formatter)
     app_logger.addHandler(ch)
