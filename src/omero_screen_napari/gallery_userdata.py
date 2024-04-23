@@ -4,7 +4,7 @@ from pydantic import BaseModel, validator
 class UserData(BaseModel):
     well: str
     segmentation: str
-    reload: str
+    reload: bool
     crop_size: int
     cellcycle: str
     columns: int
@@ -39,7 +39,7 @@ class UserData(BaseModel):
         default_values = {
             "well": "default_well",
             "segmentation": "default_segmentation",
-            "reload": "default_reload",
+            "reload": True,
             "crop_size": 100,
             "cellcycle": "default_cellcycle",
             "columns": 10,

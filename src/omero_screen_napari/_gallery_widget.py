@@ -33,15 +33,14 @@ def reset_widget():
 @magic_factory(
     call_button="Enter",
 )
-def run_analysis_widget(wells: str):
+def run_analysis_widget(wells: str, galleries: int):
     well_list = wells.split(", ")
-    run_gallery_parser(omero_data, userdata, well_list)
+    run_gallery_parser(omero_data, userdata, well_list, galleries)
 
 
 @magic_factory(
     call_button="Enter",
     segmentation={"choices": ["nucleus", "cell"]},
-    reload={"choices": ["Yes", "No"]},
     crop_size={"choices": [20, 30, 50, 100]},
     cellcycle={"choices": ["All", "G1", "S", "G2/M", "G2", "M", "Polyploid"]},
 )
@@ -49,11 +48,11 @@ def gallery_widget(
     #viewer: "napari.viewer.Viewer",
     well: str,
     segmentation: str,
-    reload: str,
     crop_size: int,
     cellcycle: str,
     columns: int = 4,
     rows: int = 4,
+    reload: bool = True,
     contour: bool = True,
     blue_channel: str = "DAPI",
     green_channel: str = "Tub",

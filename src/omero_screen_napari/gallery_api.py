@@ -23,7 +23,7 @@ logger = logging.getLogger("omero-screen-napari")
 
 def show_gallery(omero_data: OmeroData, user_data: UserData):
     try:
-        if user_data.reload == "Yes" or omero_data.cropped_images == []:
+        if user_data.reload or omero_data.cropped_images == []:
             cropped_image_parser = CroppedImageParser(omero_data, user_data)
             cropped_image_parser.parse_crops()
 
@@ -594,6 +594,7 @@ def run_gallery_parser(
     omero_data: OmeroData,
     user_data: UserData,
     well_input: list[str],
+    galleries: int,
     conn: Optional[BlitzGateway] = None,
 ):
     if conn:
@@ -601,7 +602,7 @@ def run_gallery_parser(
             gallery_path = _manage_path(omero_data)
             well_list = _get_wells(omero_data, well_input, conn)
             for well in well_list:
-                _save_gallery(omero_data, user_data, well, gallery_path, conn)
+                _save_gallery(omero_data, user_data, well, galleries, gallery_path, conn)
         except Exception as e:
             logger.error(e)
             raise e
@@ -630,23 +631,26 @@ def _save_gallery(
     omero_data: OmeroData,
     userdata: UserData,
     wellpos: str,
+    galleries: int,
     path,
     conn: BlitzGateway,
 ):
     _reset_data(omero_data, userdata, wellpos, conn)
     well_image_parser(omero_data, wellpos, conn)
+    userdata.reload = False
     cropped_image_parser = CroppedImageParser(omero_data, userdata)
     cropped_image_parser.parse_crops()
-    random_image_parser = RandomImageParser(omero_data, userdata)
-    random_image_parser.parse_random_images()
-    gallery_parser = ParseGallery(omero_data, userdata, show_gallery=False)
-    fig = gallery_parser.plot_gallery()
-    save_fig(
-        fig,
-        path,
-        f"{omero_data.plate_id}_{wellpos}_gallery",
-        fig_extension="pdf",
-    )
+    for i in range(galleries):
+        random_image_parser = RandomImageParser(omero_data, userdata)
+        random_image_parser.parse_random_images()
+        gallery_parser = ParseGallery(omero_data, userdata, show_gallery=False)
+        fig = gallery_parser.plot_gallery()
+        save_fig(
+            fig,
+            path,
+            f"{omero_data.plate_id}_{wellpos}_gallery_{i}",
+            fig_extension="pdf",
+        )
 
 
 def _reset_data(
