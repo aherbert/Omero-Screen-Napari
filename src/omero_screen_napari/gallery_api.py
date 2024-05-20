@@ -134,9 +134,9 @@ class CroppedImageParser:
             logger.error(
                 f"The selected image id: {image_id} does not have data in the well_ifdata dataframe"
             )
-            raise ValueError(
-                f"The selected image id {image_id} does not have data in the well_ifdata dataframe"
-            )
+            # raise ValueError(
+            #     f"The selected image id {image_id} does not have data in the well_ifdata dataframe"
+            # )
 
         self._centroids_row, self._centroids_col = self._select_centroids(
             cellcycle_filtered_df
@@ -602,7 +602,10 @@ def run_gallery_parser(
             gallery_path = _manage_path(omero_data)
             well_list = _get_wells(omero_data, well_input, conn)
             for well in well_list:
-                _save_gallery(omero_data, user_data, well, galleries, gallery_path, conn)
+                try:
+                    _save_gallery(omero_data, user_data, well, galleries, gallery_path, conn)
+                except Exception as e:
+                    logger.warning(e)
         except Exception as e:
             logger.error(e)
             raise e
