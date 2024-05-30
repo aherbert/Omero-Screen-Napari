@@ -12,8 +12,8 @@ contributions:
       python_name: omero_screen_napari._gallery_widget:gallery_gui_widget
       title: Make Gallery widget
     - id: omero-screen-napari.training_gui
-      python_name: omero_screen_napari._training_gui:gui_widget
-      title: Make GUI widget
+      python_name: omero_screen_napari._training_widget:training_widget
+      title: Training widget
   widgets:
     - command: omero-screen-napari.welldata_widget
       display_name: Welldata Widget
