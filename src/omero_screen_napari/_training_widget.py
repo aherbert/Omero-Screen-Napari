@@ -68,3 +68,12 @@ def previous_image():
 
 def training_widget():
     return Container(widgets=[load_image, previous_image, next_image])
+
+# Create a list that has the same length as omero_data.selected_images, and contains the string 'unassigned'
+#['unassigned, 'unassigned' etc.]
+#In the widget Generate two fields with label1 and label2 and enter buttoms.
+#When the enter button is pressed, the the list shoud be updated to either label 1 or label2 at the same index as the
+#current image
+# How can we expert the labels and the images and make then accessible for training a model.
+# Think about how to experot the labels and trainming data as local files that can be accessed for training
+
