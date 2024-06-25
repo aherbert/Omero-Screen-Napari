@@ -8,25 +8,63 @@ gallery widget and display them in a gui application for training
 
 import logging
 from omero_screen_napari.omero_data_singleton import omero_data
+from magicgui import magicgui
 from magicgui import magic_factory
 from magicgui.widgets import Container
 import napari
 
 
-def training_widget():
-    loading_instance = load_image()
-    return Container(widgets=[loading_instance])
+class ImageNavigator:
+    def __init__(self):
+        self.current_index = 0
+
+    def next_image(self):
+        if omero_data.selected_images:
+            self.current_index = (self.current_index + 1) % len(omero_data.selected_images)
+            self.update_image()
+
+    def previous_image(self):
+        if omero_data.selected_images:
+            self.current_index = (self.current_index - 1) % len(omero_data.selected_images)
+            self.update_image()
+
+    def update_image(self):
+        viewer = napari.current_viewer()
+        viewer.layers.clear()
+        if omero_data.selected_images:
+            image = omero_data.selected_images[self.current_index]
+            # Check the number of channels and adjust accordingly
+            if image.ndim == 2:
+                # Single channel, load as greyscale
+                viewer.add_image(image, name=f'Cropped Image {self.current_index}', colormap='gray')
+            elif image.shape[-1] == 2:
+                # Two channels, map first to green and second to red
+                combined_image = np.zeros((*image.shape[:-1], 3), dtype=image.dtype)
+                combined_image[..., 1] = image[..., 0]  # Green channel
+                combined_image[..., 0] = image[..., 1]  # Red channel
+                viewer.add_image(combined_image, name=f'Cropped Image {self.current_index}')
+            else:
+                # Three channels, load as RGB
+                viewer.add_image(image, name=f'Cropped Image {self.current_index}')
 
 
-@magic_factory(
-    call_button="Load Images",
-)
+image_navigator = ImageNavigator()
+
+@magicgui(call_button="Load Images")
 def load_image():
-    viewer = napari.current_viewer()
-    cropped_images = omero_data.cropped_images
-    if not cropped_images:
+    if not omero_data.selected_images:
         print("No images to load.")
         return
-    viewer.layers.clear()  # Clear all existing layers
-    viewer.add_image(cropped_images[0], name='Cropped Image 0')
+    image_navigator.current_index = 0
+    image_navigator.update_image()
 
+@magicgui(call_button="Next Image")
+def next_image():
+    image_navigator.next_image()
+
+@magicgui(call_button="Previous Image")
+def previous_image():
+    image_navigator.previous_image()
+
+def training_widget():
+    return Container(widgets=[load_image, previous_image, next_image])
