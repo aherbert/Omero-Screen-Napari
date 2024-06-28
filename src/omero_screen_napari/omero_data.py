@@ -84,6 +84,7 @@ class OmeroData:
     cropped_labels: list[np.ndarray] = field(default_factory=list)
     selected_images: list[np.ndarray] = field(default_factory=list)
     selected_labels: list[np.ndarray] = field(default_factory=list)
+    selected_classes: list[str] = field(default_factory=list)
 
 
 

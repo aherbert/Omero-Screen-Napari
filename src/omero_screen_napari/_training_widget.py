@@ -10,7 +10,7 @@ import logging
 from omero_screen_napari.omero_data_singleton import omero_data
 from magicgui import magicgui
 from magicgui import magic_factory
-from magicgui.widgets import Container
+from magicgui.widgets import Container, RadioButtons
 import napari
 
 
@@ -30,6 +30,7 @@ class ImageNavigator:
 
     def update_image(self):
         viewer = napari.current_viewer()
+        class_choice.changed.disconnect(assign_class)
         viewer.layers.clear()
         if omero_data.selected_images:
             image = omero_data.selected_images[self.current_index]
@@ -46,6 +47,8 @@ class ImageNavigator:
             else:
                 # Three channels, load as RGB
                 viewer.add_image(image, name=f'Cropped Image {self.current_index}')
+        class_choice.changed.connect(assign_class)
+        update_class_choice()
 
 
 image_navigator = ImageNavigator()
@@ -55,6 +58,8 @@ def load_image():
     if not omero_data.selected_images:
         print("No images to load.")
         return
+    selected_images_length = len(omero_data.selected_images)
+    omero_data.selected_classes = ["unassigned" for _ in range(selected_images_length)]
     image_navigator.current_index = 0
     image_navigator.update_image()
 
@@ -66,5 +71,31 @@ def next_image():
 def previous_image():
     image_navigator.previous_image()
 
+def assign_class(class_name: str):
+    if omero_data.selected_classes:
+        omero_data.selected_classes[image_navigator.current_index] = class_name
+
+class_options = ["unassigned", "class1", "class2"]  # change this to include actual class names
+class_choice = RadioButtons(label="Select class:", choices=class_options, value="unassigned")
+class_choice.changed.connect(assign_class)
+
+def update_class_choice():
+    if omero_data.selected_classes:
+        current_class = omero_data.selected_classes[image_navigator.current_index]
+    else:
+        current_class = "unassigned"
+    class_choice.value = current_class
+
 def training_widget():
-    return Container(widgets=[load_image, previous_image, next_image])
+    return Container(widgets=[load_image, previous_image, next_image, class_choice])
+
+
+
+# Create a list that has the same length as omero_data.selected_images, and contains the string 'unassigned'
+#['unassigned, 'unassigned' etc.]
+#In the widget Generate two fields with label1 and label2 and enter buttoms.
+#When the enter button is pressed, the the list shoud be updated to either label 1 or label2 at the same index as the
+#current image
+# How can we expert the labels and the images and make then accessible for training a model.
+# Think about how to experot the labels and trainming data as local files that can be accessed for training
+
