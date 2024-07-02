@@ -30,6 +30,7 @@ class ImageNavigator:
 
     def update_image(self):
         viewer = napari.current_viewer()
+        current_choices = class_choice.choices
         class_choice.changed.disconnect(assign_class)
         viewer.layers.clear()
         if omero_data.selected_images:
@@ -47,6 +48,7 @@ class ImageNavigator:
             else:
                 # Three channels, load as RGB
                 viewer.add_image(image, name=f'Cropped Image {self.current_index}')
+        class_choice.choices = current_choices
         class_choice.changed.connect(assign_class)
         update_class_choice()
 
@@ -75,7 +77,7 @@ def assign_class(class_name: str):
     if omero_data.selected_classes:
         omero_data.selected_classes[image_navigator.current_index] = class_name
 
-class_options = ["unassigned", "class1", "class2"]  # change this to include actual class names
+class_options = ["unassigned", "class1", "class2", "class3", "class4"]
 class_choice = RadioButtons(label="Select class:", choices=class_options, value="unassigned")
 class_choice.changed.connect(assign_class)
 
@@ -84,12 +86,20 @@ def update_class_choice():
         current_class = omero_data.selected_classes[image_navigator.current_index]
     else:
         current_class = "unassigned"
-    class_choice.value = current_class
+    class_choice.value = current_class if current_class in class_choice.choices else "unassigned"
+
+@magicgui(call_button="Enter", text_input={"label": "Class name"})
+def add_class(text_input: str):
+    if text_input and text_input not in class_choice.choices:
+        class_choice.choices = list(class_choice.choices) + [text_input]
+        add_class.text_input.value = ""
+
+@magicgui(call_button="Reset class options")
+def reset_class_options():
+    class_choice.choices = ["unassigned"]
 
 def training_widget():
-    return Container(widgets=[load_image, previous_image, next_image, class_choice])
-
-
+    return Container(widgets=[load_image, previous_image, next_image, add_class, class_choice, reset_class_options])
 
 # Create a list that has the same length as omero_data.selected_images, and contains the string 'unassigned'
 #['unassigned, 'unassigned' etc.]
@@ -98,4 +108,3 @@ def training_widget():
 #current image
 # How can we expert the labels and the images and make then accessible for training a model.
 # Think about how to experot the labels and trainming data as local files that can be accessed for training
-
