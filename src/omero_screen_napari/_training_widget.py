@@ -12,6 +12,11 @@ from magicgui import magicgui
 from magicgui import magic_factory
 from magicgui.widgets import Container, RadioButtons
 import napari
+import numpy as np
+import os
+from qtpy.QtWidgets import QMessageBox
+
+logger = logging.getLogger("omero-screen-napari")
 
 
 class ImageNavigator:
@@ -67,10 +72,16 @@ def load_image():
 
 @magicgui(call_button="Next Image")
 def next_image():
+    if not omero_data.selected_classes:
+        print("No images loaded.")
+        return
     image_navigator.next_image()
 
 @magicgui(call_button="Previous Image")
 def previous_image():
+    if not omero_data.selected_classes:
+        print("No images loaded.")
+        return
     image_navigator.previous_image()
 
 def assign_class(class_name: str):
@@ -98,8 +109,67 @@ def add_class(text_input: str):
 def reset_class_options():
     class_choice.choices = ["unassigned"]
 
+
+def save_training_data_to_file(text_input: str):
+
+    # Ensure user enters a classifier name
+    if not text_input.strip():
+        logger.error("No classifier name provided.")
+        raise ValueError(f"Failed to create directory: no classifier name provided.")
+
+    home_dir = os.path.expanduser('~')
+    classifier_dir = os.path.join(home_dir, text_input)
+
+    # Ensure user enters a valid classifier name
+    try:
+        os.makedirs(classifier_dir, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Failed to create directory {classifier_dir}: {e}")
+        raise ValueError(f"Failed to create directory {classifier_dir}: {e}") from e
+
+    file_path = os.path.join(classifier_dir, f'{omero_data.image_ids[0]}.npy')
+
+    # Check if the file already exists
+    if os.path.exists(file_path):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(f"The file {file_path} already exists. Do you want to overwrite it?")
+        msg_box.setWindowTitle("Warning")
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        reply = msg_box.exec_()
+        if reply == QMessageBox.No:
+            logger.info("Save operation cancelled by the user.")
+            return
+
+    # Create dictionary of training data
+    training_dict = {'target': [], 'data': []}
+    training_dict['target'] = omero_data.selected_classes
+    training_dict['data'] = omero_data.selected_images
+
+    np.save(file_path, training_dict)
+    logger.info(f"File saved to: {file_path}")
+
+
+@magicgui(call_button="Save training data", text_input={"label": "Classifier name"})
+def save_training_data(text_input: str):
+    if not omero_data.selected_classes:
+        print("No data to save.")
+        return
+    try:
+        save_training_data_to_file(text_input)
+    except Exception as e:
+        logger.error(e)
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(str(e))
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+
 def training_widget():
-    return Container(widgets=[load_image, previous_image, next_image, add_class, class_choice, reset_class_options])
+    return Container(widgets=[load_image, previous_image, next_image, add_class, class_choice, reset_class_options, save_training_data])
 
 # Create a list that has the same length as omero_data.selected_images, and contains the string 'unassigned'
 #['unassigned, 'unassigned' etc.]
