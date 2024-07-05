@@ -171,6 +171,17 @@ def save_training_data(text_input: str):
 def training_widget():
     return Container(widgets=[load_image, previous_image, next_image, add_class, class_choice, reset_class_options, save_training_data])
 
+
+viewer = napari.current_viewer()
+
+@viewer.bind_key("w")
+def trigger_next_image(event=None):
+    next_image()
+
+@viewer.bind_key("q")
+def trigger_previous_image(event=None):
+    previous_image()
+
 # Create a list that has the same length as omero_data.selected_images, and contains the string 'unassigned'
 #['unassigned, 'unassigned' etc.]
 #In the widget Generate two fields with label1 and label2 and enter buttoms.
