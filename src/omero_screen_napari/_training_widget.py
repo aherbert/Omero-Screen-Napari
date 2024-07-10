@@ -17,48 +17,121 @@ import os
 from qtpy.QtWidgets import QMessageBox
 
 logger = logging.getLogger("omero-screen-napari")
+logging.basicConfig(level=logging.DEBUG)
 
 
 class ImageNavigator:
     def __init__(self):
         self.current_index = 0
+        self.first_load = True  # Flag to check if it is the first image load
+        self.saved_contrast_limits = None  # Variable to save user settings
 
     def next_image(self):
         if omero_data.selected_images:
-            self.current_index = (self.current_index + 1) % len(omero_data.selected_images)
+            self.current_index = (self.current_index + 1) % len(
+                omero_data.selected_images
+            )
             self.update_image()
 
     def previous_image(self):
         if omero_data.selected_images:
-            self.current_index = (self.current_index - 1) % len(omero_data.selected_images)
+            self.current_index = (self.current_index - 1) % len(
+                omero_data.selected_images
+            )
             self.update_image()
 
     def update_image(self):
         viewer = napari.current_viewer()
         current_choices = class_choice.choices
         class_choice.changed.disconnect(assign_class)
+
+        # Save current settings if there are any layers and it's not the first load
+        if not self.first_load and viewer.layers:
+            self.saved_contrast_limits = viewer.layers[0].contrast_limits
+            logger.debug(
+                f"Saving contrast limits: {self.saved_contrast_limits}"
+            )
+
+        # Clear existing layers
         viewer.layers.clear()
+        logger.debug("Viewer layers cleared.")
+
         if omero_data.selected_images:
             image = omero_data.selected_images[self.current_index]
-            # Check the number of channels and adjust accordingly
-            if image.ndim == 2:
-                # Single channel, load as greyscale
-                viewer.add_image(image, name=f'Cropped Image {self.current_index}', colormap='gray')
-            elif image.shape[-1] == 2:
-                # Two channels, map first to green and second to red
-                combined_image = np.zeros((*image.shape[:-1], 3), dtype=image.dtype)
-                combined_image[..., 1] = image[..., 0]  # Green channel
-                combined_image[..., 0] = image[..., 1]  # Red channel
-                viewer.add_image(combined_image, name=f'Cropped Image {self.current_index}')
+            logger.debug(f"Selected image shape: {image.shape}")
+
+            try:
+                # Check the number of channels and adjust accordingly
+                if omero_data.cropped_images[0].shape[-1] == 1:
+                    # Single channel, load as greyscale
+                    grayscale_image = np.mean(image, axis=-1)
+                    logger.debug(
+                        f"Grayscale image shape: {grayscale_image.shape}"
+                    )
+                    inverted_image = 1.0 - grayscale_image  # Invert the image
+                    viewer.add_image(
+                        inverted_image,
+                        name=f"Cropped Image {self.current_index}",
+                        colormap="gray",
+                    )
+                    logger.debug("Inverted grayscale image added to viewer.")
+                else:
+                    # Three channels, load as RGB
+                    viewer.add_image(
+                        image, name=f"Cropped Image {self.current_index}"
+                    )
+                    logger.debug("RGB image added to viewer.")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Error adding image to viewer: {e}")
+                return
+
+            # Verify the layer was added
+            if not viewer.layers:
+                logger.error(
+                    "No layers present in the viewer after adding the image."
+                )
+                return
+
+            # Apply contrast limits if there are any and not the first load
+            if not self.first_load and self.saved_contrast_limits:
+                min_intensity, max_intensity = (
+                    viewer.layers[0].data.min(),
+                    viewer.layers[0].data.max(),
+                )
+                if (
+                    self.saved_contrast_limits[0] >= min_intensity
+                    and self.saved_contrast_limits[1] <= max_intensity
+                ):
+                    logger.debug(
+                        f"Applying contrast limits: {self.saved_contrast_limits}"
+                    )
+                    viewer.layers[
+                        0
+                    ].contrast_limits = self.saved_contrast_limits
+                else:
+                    logger.warning(
+                        f"Contrast limits {self.saved_contrast_limits} are out of range for the new image intensity values."
+                    )
             else:
-                # Three channels, load as RGB
-                viewer.add_image(image, name=f'Cropped Image {self.current_index}')
+                logger.debug("No contrast limits to apply or first image load.")
+
+            self.first_load = False  # Update the flag after the first load
+        else:
+            logger.warning("No selected images to load.")
+
+        # Restore class choices and reconnect signal
         class_choice.choices = current_choices
         class_choice.changed.connect(assign_class)
         update_class_choice()
+        logger.debug("Class choices restored and signal reconnected.")
+
+        # Force a refresh of the viewer
+        viewer.update_console({"layers": viewer.layers})
+        logger.debug("Viewer updated successfully.")
 
 
 image_navigator = ImageNavigator()
+
 
 @magicgui(call_button="Load Images")
 def load_image():
@@ -66,9 +139,12 @@ def load_image():
         print("No images to load.")
         return
     selected_images_length = len(omero_data.selected_images)
-    omero_data.selected_classes = ["unassigned" for _ in range(selected_images_length)]
+    omero_data.selected_classes = [
+        "unassigned" for _ in range(selected_images_length)
+    ]
     image_navigator.current_index = 0
     image_navigator.update_image()
+
 
 @magicgui(call_button="Next Image")
 def next_image():
@@ -77,6 +153,7 @@ def next_image():
         return
     image_navigator.next_image()
 
+
 @magicgui(call_button="Previous Image")
 def previous_image():
     if not omero_data.selected_classes:
@@ -84,20 +161,32 @@ def previous_image():
         return
     image_navigator.previous_image()
 
+
 def assign_class(class_name: str):
     if omero_data.selected_classes:
         omero_data.selected_classes[image_navigator.current_index] = class_name
 
+
 class_options = ["unassigned", "class1", "class2", "class3", "class4"]
-class_choice = RadioButtons(label="Select class:", choices=class_options, value="unassigned")
+class_choice = RadioButtons(
+    label="Select class:", choices=class_options, value="unassigned"
+)
 class_choice.changed.connect(assign_class)
+
 
 def update_class_choice():
     if omero_data.selected_classes:
-        current_class = omero_data.selected_classes[image_navigator.current_index]
+        current_class = omero_data.selected_classes[
+            image_navigator.current_index
+        ]
     else:
         current_class = "unassigned"
-    class_choice.value = current_class if current_class in class_choice.choices else "unassigned"
+    class_choice.value = (
+        current_class
+        if current_class in class_choice.choices
+        else "unassigned"
+    )
+
 
 @magicgui(call_button="Enter", text_input={"label": "Class name"})
 def add_class(text_input: str):
@@ -105,19 +194,21 @@ def add_class(text_input: str):
         class_choice.choices = list(class_choice.choices) + [text_input]
         add_class.text_input.value = ""
 
+
 @magicgui(call_button="Reset class options")
 def reset_class_options():
     class_choice.choices = ["unassigned"]
 
 
 def save_training_data_to_file(text_input: str):
-
     # Ensure user enters a classifier name
     if not text_input.strip():
         logger.error("No classifier name provided.")
-        raise ValueError(f"Failed to create directory: no classifier name provided.")
+        raise ValueError(
+            f"Failed to create directory: no classifier name provided."
+        )
 
-    home_dir = os.path.expanduser('~')
+    home_dir = os.path.expanduser("~")
     classifier_dir = os.path.join(home_dir, text_input)
 
     # Ensure user enters a valid classifier name
@@ -125,15 +216,19 @@ def save_training_data_to_file(text_input: str):
         os.makedirs(classifier_dir, exist_ok=True)
     except OSError as e:
         logger.error(f"Failed to create directory {classifier_dir}: {e}")
-        raise ValueError(f"Failed to create directory {classifier_dir}: {e}") from e
+        raise ValueError(
+            f"Failed to create directory {classifier_dir}: {e}"
+        ) from e
 
-    file_path = os.path.join(classifier_dir, f'{omero_data.image_ids[0]}.npy')
+    file_path = os.path.join(classifier_dir, f"{omero_data.image_ids[0]}.npy")
 
     # Check if the file already exists
     if os.path.exists(file_path):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(f"The file {file_path} already exists. Do you want to overwrite it?")
+        msg_box.setText(
+            f"The file {file_path} already exists. Do you want to overwrite it?"
+        )
         msg_box.setWindowTitle("Warning")
         msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         msg_box.setDefaultButton(QMessageBox.No)
@@ -143,15 +238,17 @@ def save_training_data_to_file(text_input: str):
             return
 
     # Create dictionary of training data
-    training_dict = {'target': [], 'data': []}
-    training_dict['target'] = omero_data.selected_classes
-    training_dict['data'] = omero_data.selected_images
+    training_dict = {"target": [], "data": []}
+    training_dict["target"] = omero_data.selected_classes
+    training_dict["data"] = omero_data.selected_images
 
     np.save(file_path, training_dict)
     logger.info(f"File saved to: {file_path}")
 
 
-@magicgui(call_button="Save training data", text_input={"label": "Classifier name"})
+@magicgui(
+    call_button="Save training data", text_input={"label": "Classifier name"}
+)
 def save_training_data(text_input: str):
     if not omero_data.selected_classes:
         print("No data to save.")
@@ -169,23 +266,36 @@ def save_training_data(text_input: str):
 
 
 def training_widget():
-    return Container(widgets=[load_image, previous_image, next_image, add_class, class_choice, reset_class_options, save_training_data])
+    return Container(
+        widgets=[
+            load_image,
+            previous_image,
+            next_image,
+            add_class,
+            class_choice,
+            reset_class_options,
+            save_training_data,
+        ]
+    )
 
 
 viewer = napari.current_viewer()
+
 
 @viewer.bind_key("w")
 def trigger_next_image(event=None):
     next_image()
 
+
 @viewer.bind_key("q")
 def trigger_previous_image(event=None):
     previous_image()
 
+
 # Create a list that has the same length as omero_data.selected_images, and contains the string 'unassigned'
-#['unassigned, 'unassigned' etc.]
-#In the widget Generate two fields with label1 and label2 and enter buttoms.
-#When the enter button is pressed, the the list shoud be updated to either label 1 or label2 at the same index as the
-#current image
+# ['unassigned, 'unassigned' etc.]
+# In the widget Generate two fields with label1 and label2 and enter buttoms.
+# When the enter button is pressed, the the list shoud be updated to either label 1 or label2 at the same index as the
+# current image
 # How can we expert the labels and the images and make then accessible for training a model.
 # Think about how to experot the labels and trainming data as local files that can be accessed for training

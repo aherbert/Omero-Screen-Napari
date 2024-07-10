@@ -13,8 +13,8 @@ from omero_screen_napari.welldata_api import parse_omero_data
 
 
 # Define the plate ID, well position, and image index
-plate_id = "1237"
-well_pos_list = "B7"
+plate_id = "1856"
+well_pos_list = "B5"
 images = "0"
 
 # Create a Napari viewer instance
