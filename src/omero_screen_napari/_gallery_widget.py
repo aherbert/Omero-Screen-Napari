@@ -74,5 +74,3 @@ def gallery_widget(
     UserData.set_omero_data_channel_keys(omero_data.channel_data.keys())
     UserData.reset_with_input(userdata, **user_data_dict)
     show_gallery(omero_data, userdata)
-
-g
