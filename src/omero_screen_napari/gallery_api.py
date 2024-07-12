@@ -1,22 +1,21 @@
+import datetime
 import logging
 import random
-from typing import Optional
 from pathlib import Path
-import datetime
+from typing import Optional
 
-from omero.gateway import BlitzGateway, PlateWrapper
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-
+from omero.gateway import BlitzGateway, PlateWrapper
 from qtpy.QtWidgets import QMessageBox
 from skimage.measure import find_contours, label, regionprops
 
-from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.gallery_userdata import UserData
+from omero_screen_napari.omero_data import OmeroData
+from omero_screen_napari.utils import omero_connect, save_fig, scale_image
 from omero_screen_napari.welldata_api import well_image_parser
-from omero_screen_napari.utils import omero_connect, scale_image, save_fig
 
 logger = logging.getLogger("omero-screen-napari")
 

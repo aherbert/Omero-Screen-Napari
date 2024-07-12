@@ -74,13 +74,14 @@ def load_and_visualize_data(viewer, plate_id, well_pos_list, images):
     _initial_position = viewer.dims.current_step[0]
     mock_event = MockEvent(viewer.dims)
     slider_position_change(mock_event)
+    return user_data
 
 
 # Load and visualize the data
-load_and_visualize_data(viewer, plate_id, well_pos_list, images)
+user_data = load_and_visualize_data(viewer, plate_id, well_pos_list, images)
 
 # Add your plugin widget to the viewer
-viewer.window.add_dock_widget(training_widget(class_options, class_name), area='right')
+viewer.window.add_dock_widget(training_widget(class_options, class_name, user_data), area='right')
 
 
 

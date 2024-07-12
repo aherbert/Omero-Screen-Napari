@@ -1,17 +1,15 @@
+import datetime
 import logging
 from pathlib import Path
-import datetime
 
 import numpy as np
 from magicgui import magic_factory
 from magicgui.widgets import Container
 
-
-from omero_screen_napari.omero_data_singleton import omero_data
-from omero_screen_napari.gallery_api import show_gallery, run_gallery_parser
+from omero_screen_napari.gallery_api import run_gallery_parser, show_gallery
 from omero_screen_napari.gallery_userdata import UserData
 from omero_screen_napari.gallery_userdata_singleton import userdata
-
+from omero_screen_napari.omero_data_singleton import omero_data
 
 logger = logging.getLogger("omero-screen-napari")
 

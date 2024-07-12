@@ -56,3 +56,6 @@ class UserData(BaseModel):
             if hasattr(instance, field):
                 setattr(instance, field, value)
         return instance
+
+    def to_dict(self):
+        return self.dict()
