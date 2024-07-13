@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from pathlib import Path
 
 import napari
@@ -18,6 +17,15 @@ from omero_screen_napari.omero_data_singleton import omero_data
 
 logger = logging.getLogger("omero-screen-napari")
 logging.basicConfig(level=logging.DEBUG)
+
+
+def training_widget(
+    class_options: list[str] | None = None,
+    class_name: str | None = None,
+    user_data: UserData | None = global_user_data,
+) -> Container:
+    widget = TrainingWidget(class_options, class_name, user_data, omero_data)
+    return widget.container
 
 
 class ImageNavigator:
@@ -185,6 +193,13 @@ class TrainingWidget:
         self.image_navigator = ImageNavigator(class_options)
         self.user_data = user_data
         self.omero_data = omero_data
+        self.class_name = class_name or "Classifier Name"
+        self.training_data_saver = TrainingDataSaver(
+            self.class_name,
+            self.omero_data,
+            self.user_data,
+            self.image_navigator,
+        )
         self.setup_key_bindings(napari.current_viewer())
 
         self.load_image = magicgui(call_button="Load Images")(self.load_image)
@@ -198,34 +213,33 @@ class TrainingWidget:
         self.reset_class_options = magicgui(call_button="Reset class options")(
             self.reset_class_options
         )
-        name_input = class_name or "Classifier Name"
 
         self.save_training_data = magicgui(
             call_button="Save training data",
-            text_input={"label": "filename", "value": name_input},
+            text_input={"label": "filename", "value": self.class_name},
         )(self.save_training_data)
 
         self.container = self.create_container()
 
     def load_image(self):
-        if not omero_data.selected_images:
+        if not self.omero_data.selected_images:
             print("No images to load.")
             return
-        selected_images_length = len(omero_data.selected_images)
-        omero_data.selected_classes = [
+        selected_images_length = len(self.omero_data.selected_images)
+        self.omero_data.selected_classes = [
             "unassigned" for _ in range(selected_images_length)
         ]
         self.image_navigator.current_index = 0
         self.image_navigator.update_image()
 
     def next_image(self):
-        if not omero_data.selected_classes:
+        if not self.omero_data.selected_classes:
             print("No images loaded.")
             return
         self.image_navigator.next_image()
 
     def previous_image(self):
-        if not omero_data.selected_classes:
+        if not self.omero_data.selected_classes:
             print("No images loaded.")
             return
         self.image_navigator.previous_image()
@@ -239,124 +253,7 @@ class TrainingWidget:
         self.image_navigator.reset_class_options()
 
     def save_training_data(self, text_input: str):
-        try:
-            # Ensure user enters a classifier name
-            self._validate_classifier_name(text_input)
-
-            home_dir = Path.home()
-            classifier_dir = home_dir / text_input
-            self._create_directory(classifier_dir)
-
-            file_path = classifier_dir / f"{self.omero_data.image_ids[0]}.npy"
-            meta_data_path = classifier_dir / "metadata.json"
-
-            if self._file_exists_and_confirm(file_path):
-                return
-
-            # Create dictionaries of training and metadata
-            training_dict = self._create_training_dict()
-            metadata = self._create_metadata_dict()
-
-            if self._metadata_exists_and_confirm(meta_data_path, metadata):
-                return
-
-            # Save the training data and metadata
-            np.save(file_path, training_dict)
-            self._save_metadata(meta_data_path, metadata)
-            logger.info(f"File and metadata saved to: {classifier_dir}")
-
-            # Show success message
-            self._show_success_message(
-                f"Data for image {self.omero_data.image_ids[0]} successfully saved."
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.error(e)
-            self._show_error_message(str(e))
-
-    def _validate_classifier_name(self, text_input: str):
-        if not text_input.strip():
-            logger.error("No classifier name provided.")
-            raise ValueError(
-                "Failed to create directory: no classifier name provided."
-            )
-
-    def _create_directory(self, directory: Path):
-        try:
-            directory.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            logger.error(f"Failed to create directory {directory}: {e}")
-            raise ValueError(
-                f"Failed to create directory {directory}: {e}"
-            ) from e
-
-    def _file_exists_and_confirm(self, file_path: Path) -> bool:
-        if file_path.exists():
-            return not self._show_confirmation_dialog(
-                f"The file {file_path} already exists. Do you want to overwrite it?",
-                "Warning",
-            )
-        return False
-
-    def _create_training_dict(self) -> dict:
-        return {
-            "target": self.omero_data.selected_classes,
-            "data": self.omero_data.selected_images,
-        }
-
-    def _create_metadata_dict(self) -> dict:
-        user_data_dict = self.user_data.to_dict()
-        user_data_dict.pop("well", None)
-        return {
-            "user_data": user_data_dict,
-            "class_options": self.image_navigator.class_options,
-        }
-
-    def _metadata_exists_and_confirm(
-        self, meta_data_path: Path, metadata: dict
-    ) -> bool:
-        if meta_data_path.exists():
-            with meta_data_path.open("r") as json_file:
-                existing_metadata = json.load(json_file)
-
-            if existing_metadata != metadata:
-                return not self._show_confirmation_dialog(
-                    "Metadata have changed. Do you want to overwrite the file?",
-                    "Warning",
-                )
-            logger.info("Metadata is already in place and identical.")
-            return True
-        return False
-
-    def _show_confirmation_dialog(self, message: str, title: str) -> bool:
-        # sourcery skip: class-extract-method
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(message)
-        msg_box.setWindowTitle(title)
-        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        msg_box.setDefaultButton(QMessageBox.No)
-        reply = msg_box.exec_()
-        return reply == QMessageBox.Yes
-
-    def _show_error_message(self, message: str):
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(message)
-        msg_box.setWindowTitle("Error")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
-
-    def _show_success_message(self, message: str):
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(message)
-        msg_box.setWindowTitle("Success")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
-
-    def _save_metadata(self, meta_data_path: Path, metadata: dict):
-        with meta_data_path.open("w") as json_file:
-            json.dump(metadata, json_file)
+        self.training_data_saver._save_data()
 
     def setup_key_bindings(self, viewer):
         @viewer.bind_key("w")
@@ -379,12 +276,166 @@ class TrainingWidget:
                 self.save_training_data,
             ]
         )
+class TrainingDataSaver:
+    def __init__(
+        self,
+        classifier_name: str,
+        omero_data: OmeroData,
+        user_data: UserData,
+        image_navigator: ImageNavigator,
+    ):
+        self.classifier_name = classifier_name
+        self.omero_data = omero_data
+        self.user_data = user_data
+        self.image_navigator = image_navigator
+        self.home_dir = Path.home() / "omeroscreen_trainingdata"
+        self.classifier_dir = self.home_dir / self.classifier_name
+        self.file_name, self.file_path, self.meta_data_path = self._set_paths()
+        self.training_dict = self._create_training_dict()
+        self.metadata = self._create_metadata_dict()
 
+    def _save_data(self):
+        try:
+            self._validate_classifier_name(self.classifier_name)
+            if not self.classifier_dir.exists():
+                self._create_and_save()
+                return
 
-def training_widget(
-    class_options: list[str] | None = None,
-    class_name: str | None = None,
-    user_data: UserData | None = global_user_data,
-) -> Container:
-    widget = TrainingWidget(class_options, class_name, user_data, omero_data)
-    return widget.container
+            file_check = self._check_directory_contents()
+            self._handle_saving_logic(file_check)
+        except Exception as e:  # noqa: BLE001
+            logger.error(e)
+            self._show_error_message(str(e))
+
+    def _create_and_save(self):
+        self._create_directory(self.classifier_dir)
+        self.save_both()
+
+    def _check_directory_contents(self):
+        logger.info(f"Directory {self.classifier_dir} already exists.")
+        contents = list(self.classifier_dir.iterdir())
+        return self.check_files(contents)
+
+    def _handle_saving_logic(self, file_check):
+        if file_check in ["empty", "neither"]:
+            self.save_both()
+        elif file_check == "metadata":
+            self._handle_metadata_present()
+        elif file_check == "training_data":
+            self._handle_training_data_present()
+        elif file_check == "both":
+            self._handle_both_present()
+
+    def _handle_metadata_present(self):
+        if self.compare_metadata():
+            self._save_training_data()
+        elif self._show_confirmation_dialog(
+            "Metadata has changed. Do you want to overwrite them and save {self.file_name}?"
+        ):
+            self.save_both()
+
+    def _handle_training_data_present(self):
+        if self._show_confirmation_dialog(
+            "The file {self.file_name} already exists without metadata. Do you want to overwrite the file and save the metadata?"
+        ):
+            self.save_both()
+
+    def _handle_both_present(self):
+        if self.compare_metadata():
+            if self._show_confirmation_dialog(f"Do you want to overwrite {self.file_name}?"):
+                self._save_training_data()
+        elif self._show_confirmation_dialog(
+            "{self.file_name} and metadata have changed. Do you want to overwrite both?"
+        ):
+            self.save_both()
+
+    def save_both(self):
+        np.save(self.file_path, self.training_dict)
+        self._save_metadata(self.meta_data_path, self.metadata)
+        logger.info(f"File and metadata saved to: {self.classifier_dir}")
+        self._show_success_message(f"Data for {self.file_name} and metadata successfully saved.")
+
+    def _save_training_data(self):
+        np.save(self.file_path, self.training_dict)
+        logger.info(f"File saved to: {self.file_path}, metadata already present")
+        self._show_success_message(f"Data for image {self.file_name} successfully saved, with metadata present.")
+
+    def _set_paths(self):
+        plate = self.omero_data.plate_id
+        well = self.omero_data.well_pos_list[0]
+        image = self.omero_data.image_index[0]
+        file_name = f"{plate}_{well}_{image}.npy"
+        file_path = self.classifier_dir / file_name
+        meta_data_path = self.classifier_dir / "metadata.json"
+        return file_name, file_path, meta_data_path
+
+    def check_files(self, contents):
+        has_metadata = any(file.name == "metadata.json" for file in contents)
+        has_self_file = any(file.name == self.file_name for file in contents)
+
+        if not contents:
+            return "empty"
+        if has_metadata:
+            return "both" if has_self_file else "metadata"
+        return "training_data" if has_self_file else "neither"
+
+    def compare_metadata(self) -> bool:
+        with self.meta_data_path.open("r") as json_file:
+            existing_metadata = json.load(json_file)
+        return existing_metadata == self.metadata
+
+    def _validate_classifier_name(self, text_input: str):
+        if not text_input.strip():
+            logger.error("No classifier name provided.")
+            raise ValueError("Failed to create directory: no classifier name provided.")
+
+    def _create_directory(self, directory: Path):
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.error(f"Failed to create directory {directory}: {e}")
+            raise ValueError(f"Failed to create directory {directory}: {e}") from e
+
+    def _create_training_dict(self) -> dict:
+        return {
+            "target": self.omero_data.selected_classes,
+            "data": self.omero_data.selected_images,
+        }
+
+    def _create_metadata_dict(self) -> dict:
+        user_data_dict = self.user_data.to_dict()
+        user_data_dict.pop("well", None)
+        return {
+            "user_data": user_data_dict,
+            "class_options": self.image_navigator.class_options,
+        }
+
+    def _save_metadata(self, meta_data_path: Path, metadata: dict):
+        with meta_data_path.open("w") as json_file:
+            json.dump(metadata, json_file)
+
+    def _show_error_message(self, message: str):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(message)
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def _show_success_message(self, message: str):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setText(message)
+        msg_box.setWindowTitle("Success")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def _show_confirmation_dialog(self, message: str) -> bool:
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setText(message)
+        msg_box.setWindowTitle('Warning')
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        reply = msg_box.exec_()
+        return reply == QMessageBox.Yes

@@ -63,3 +63,39 @@ filterwarnings = [
     "ignore:the imp module is deprecated in favour of importlib.*:DeprecationWarning"
 ]
 
+
+[project]
+name = "omero-screen-napari"
+description = "Plugin to build galleries from Omero-Screen data"
+readme = "README.md"
+license = {text = "MIT"}
+dynamic = ["version"]
+authors = [
+    {name = "Helfrid Hochegger", email = "your.email@example.com"}
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Framework :: napari",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Image Processing"
+]
+dependencies = [
+    "numpy",
+    "magicgui",
+    "qtpy"
+]
+requires-python = ">=3.8"
+
+[project.urls]
+"Bug Tracker" = "https://github.com/HocheggerLab/omero-screen-napari/issues"
+"Documentation" = "https://github.com/HocheggerLab/omero-screen-napari#README.md"
+"Source Code" = "https://github.com/HocheggerLab/omero-screen-napari"
+"User Support" = "https://github.com/HocheggerLab/omero-screen-napari/issues"

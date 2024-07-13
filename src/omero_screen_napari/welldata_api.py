@@ -26,12 +26,12 @@ from qtpy.QtWidgets import QMessageBox
 from skimage import exposure
 from tqdm import tqdm
 
-from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import (
     omero_data,
     reset_omero_data,
 )
+from omero_screen_napari.utils import omero_connect
 
 logger = logging.getLogger("omero-screen-napari")
 get_image: Callable = get_image

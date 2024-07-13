@@ -1,5 +1,6 @@
 name: omero-screen-napari
 display_name: Omero Screen Napari
+
 contributions:
   commands:
     - id: omero-screen-napari.welldata_widget
