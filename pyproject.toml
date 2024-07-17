@@ -2,68 +2,6 @@
 requires = ["setuptools>=42.0.0", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
-
-[tool.setuptools_scm]
-write_to = "src/omero_screen_napari/_version.py"
-
-[tool.black]
-line-length = 79
-target-version = ['py38', 'py39', 'py310']
-
-
-[tool.ruff]
-line-length = 79
-select = [
-    "E", "F", "W", #flake8
-    "UP", # pyupgrade
-    "I", # isort
-    "BLE", # flake8-blind-exception
-    "B", # flake8-bugbear
-    "A", # flake8-builtins
-    "C4", # flake8-comprehensions
-    "ISC", # flake8-implicit-str-concat
-    "G", # flake8-logging-format
-    "PIE", # flake8-pie
-    "SIM", # flake8-simplify
-]
-ignore = [
-    "E501", # line too long. let black handle this
-    "UP006", "UP007", # type annotation. As using magicgui require runtime type annotation then we disable this.
-    "SIM117", # flake8-simplify - some of merged with statements are not looking great with black, reanble after drop python 3.9
-    "G004", # flake8-logging-format - doesnt allow f-strings, but speed costs are minimal
-    ]
-
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".mypy_cache",
-    ".pants.d",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "*vendored*",
-    "*_vendor*",
-]
-
-target-version = "py38"
-fix = true
-
-[tool.pytest.ini_options]
-filterwarnings = [
-    "ignore:the imp module is deprecated in favour of importlib.*:DeprecationWarning"
-]
-
-
 [project]
 name = "omero-screen-napari"
 description = "Plugin to build galleries from Omero-Screen data"
@@ -99,3 +37,68 @@ requires-python = ">=3.8"
 "Documentation" = "https://github.com/HocheggerLab/omero-screen-napari#README.md"
 "Source Code" = "https://github.com/HocheggerLab/omero-screen-napari"
 "User Support" = "https://github.com/HocheggerLab/omero-screen-napari/issues"
+
+[project.entry-points.'napari.manifest']
+omero-screen-napari = 'omero_screen_napari:napari.yaml'
+
+[project.scripts]
+omero-screen-napari = "omero_screen_napari.bin.load_training_data:main"
+
+[tool.setuptools_scm]
+write_to = "src/omero_screen_napari/_version.py"
+
+[tool.black]
+line-length = 79
+target-version = ['py38', 'py39', 'py310']
+
+[tool.ruff]
+line-length = 79
+select = [
+    "E", "F", "W", #flake8
+    "UP", # pyupgrade
+    "I", # isort
+    "BLE", # flake8-blind-exception
+    "B", # flake8-bugbear
+    "A", # flake8-builtins
+    "C4", # flake8-comprehensions
+    "ISC", # flake8-implicit-str-concat
+    "G", # flake8-logging-format
+    "PIE", # flake8-pie
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501", # line too long. let black handle this
+    "UP006", "UP007", # type annotation. As using magicgui require runtime type annotation then we disable this.
+    "SIM117", # flake8-simplify - some of merged with statements are not looking great with black, reanble after drop python 3.9
+    "G004", # flake8-logging-format - doesnt allow f-strings, but speed costs are minimal
+]
+
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "*vendored*",
+    "*_vendor*",
+]
+
+target-version = "py38"
+fix = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:the imp module is deprecated in favour of importlib.*:DeprecationWarning"
+]
