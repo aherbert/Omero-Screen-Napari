@@ -350,12 +350,14 @@ class TrainingDataSaver:
             self.save_both()
 
     def save_both(self):
+        self.training_dict = self._create_training_dict()
         np.save(self.file_path, self.training_dict)
         self._save_metadata(self.meta_data_path, self.metadata)
         logger.info(f"File and metadata saved to: {self.classifier_dir}")
         self._show_success_message(f"Data for {self.file_name} and metadata successfully saved.")
 
     def _save_training_data(self):
+        self.training_dict = self._create_training_dict()
         np.save(self.file_path, self.training_dict)
         logger.info(f"File saved to: {self.file_path}, metadata already present")
         self._show_success_message(f"Data for image {self.file_name} successfully saved, with metadata present.")
@@ -397,6 +399,7 @@ class TrainingDataSaver:
             raise ValueError(f"Failed to create directory {directory}: {e}") from e
 
     def _create_training_dict(self) -> dict:
+        logger.info(f"Creating training data dictionary with {len(self.omero_data.selected_classes)} entries.")
         return {
             "target": self.omero_data.selected_classes,
             "data": self.omero_data.selected_images,
