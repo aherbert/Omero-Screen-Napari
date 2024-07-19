@@ -8,7 +8,7 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from omero.gateway import BlitzGateway, PlateWrapper
+from omero.gateway import BlitzGateway
 from qtpy.QtWidgets import QMessageBox
 from skimage.measure import find_contours, label, regionprops
 
@@ -327,7 +327,7 @@ class RandomImageParser:
     def parse_random_images(self):
         self._parse_random_index()
         self._parse_random_images()
-        #self._check_identical_arrays()
+        # self._check_identical_arrays()
         self._omero_data.cropped_images = self._remove_chosen_crops(
             self._omero_data.cropped_images
         )
@@ -347,17 +347,45 @@ class RandomImageParser:
         self._omero_data.selected_images = self._random_images
         self._omero_data.selected_labels = self._random_labels
 
+    def _remove_duplicate_images(self):
+        """
+        Remove duplicate images and their corresponding labels from the dataset.
+        """
+        self._remove_duplicate_images()
+        unique_images = []
+        unique_labels = []
+        seen_images = set()
+
+        for image, unique_label in zip(
+            self._omero_data.cropped_images, self._omero_data.cropped_labels
+        ):
+            image_tuple = tuple(
+                image.flatten()
+            )  # Convert image to a hashable type
+            if image_tuple not in seen_images:
+                seen_images.add(image_tuple)
+                unique_images.append(image)
+                unique_labels.append(unique_label)
+
+        self._omero_data.cropped_images = unique_images
+        self._omero_data.cropped_labels = unique_labels
+
     def _parse_random_index(self):
         """
         Select random index to be used to choose images the gallery from the croped images and labels.
         """
-        sample_size = min(
-            self._user_data.columns * self._user_data.rows,
-            len(self._omero_data.cropped_images),
-        )
-        self._chosen_indices = random.sample(
-            range(len(self._omero_data.cropped_images)), sample_size
-        )
+        if self._user_data.columns == 0 and self._user_data.rows == 0:
+            self._chosen_indices = list(
+                range(len(self._omero_data.cropped_images))
+            )
+        else:
+            sample_size = min(
+                self._user_data.columns * self._user_data.rows,
+                len(self._omero_data.cropped_images),
+            )
+            self._chosen_indices = random.sample(
+                range(len(self._omero_data.cropped_images)), sample_size
+            )
 
     def _parse_random_images(self):
         """
@@ -602,7 +630,14 @@ def run_gallery_parser(
             well_list = _get_wells(omero_data, well_input, conn)
             for well in well_list:
                 try:
-                    _save_gallery(omero_data, user_data, well, galleries, gallery_path, conn)
+                    _save_gallery(
+                        omero_data,
+                        user_data,
+                        well,
+                        galleries,
+                        gallery_path,
+                        conn,
+                    )
                 except Exception as e:
                     logger.warning(e)
         except Exception as e:
@@ -620,7 +655,9 @@ def _manage_path(omero_data: OmeroData):
     return experiment_path
 
 
-def _get_wells(omero_data: OmeroData, well_input: list[str], conn: BlitzGateway):
+def _get_wells(
+    omero_data: OmeroData, well_input: list[str], conn: BlitzGateway
+):
     plate = conn.getObject("Plate", omero_data.plate_id)
     well_list = [well.getWellPos() for well in plate.listChildren()]  # type: ignore
     if well_input == ["All"]:
@@ -660,7 +697,7 @@ def _reset_data(
 ):
     omero_data.reset_well_and_image_data()
     # omero_data.cropped_images == [np.empty((0,))]
-    # omero_data.cropped_labels == [] 
+    # omero_data.cropped_labels == []
     omero_data.well_pos_list = [wellpos]
     userdata.well = wellpos
     if plate := conn.getObject("Plate", omero_data.plate_id):
@@ -677,4 +714,6 @@ def _reset_data(
     ):
         omero_data.screen_dataset = dataset
     else:
-        raise ValueError(f"Error connection to project {omero_data.project_id}")
+        raise ValueError(
+            f"Error connection to project {omero_data.project_id}"
+        )

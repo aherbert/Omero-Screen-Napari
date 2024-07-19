@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
 import napari
@@ -8,10 +9,12 @@ from magicgui import magicgui
 from magicgui.widgets import Container, RadioButtons
 from qtpy.QtWidgets import QMessageBox
 
-from omero_screen_napari.gallery_userdata import UserData
-from omero_screen_napari.gallery_userdata_singleton import (
-    userdata as global_user_data,
+from omero_screen_napari.gallery_api import (
+    CroppedImageParser,
+    RandomImageParser,
 )
+from omero_screen_napari.gallery_userdata import UserData
+from omero_screen_napari.gallery_userdata_singleton import userdata
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
 
@@ -22,9 +25,9 @@ logging.basicConfig(level=logging.DEBUG)
 def training_widget(
     class_options: list[str] | None = None,
     class_name: str | None = None,
-    user_data: UserData | None = global_user_data,
+    userdata: UserData | None = userdata,
 ) -> Container:
-    widget = TrainingWidget(class_options, class_name, user_data, omero_data)
+    widget = TrainingWidget(class_options, class_name, userdata, omero_data)
     return widget.container
 
 
@@ -33,16 +36,13 @@ class ImageNavigator:
         self.current_index = 0
         self.first_load = True  # Flag to check if it is the first image load
         self.saved_contrast_limits = None  # Variable to save user settings
-        if class_options is None:
-            self.class_options = [
+        self.class_options = (
+            [
                 "unassigned",
-                "class1",
-                "class2",
-                "class3",
-                "class4",
             ]
-        else:
-            self.class_options = class_options
+            if class_options is None
+            else class_options
+        )
         self.class_choice = RadioButtons(
             label="Select class:",
             choices=self.class_options,
@@ -170,17 +170,6 @@ class ImageNavigator:
             else "unassigned"
         )
 
-    def add_class(self, class_name: str):
-        if class_name and class_name not in self.class_choice.choices:
-            self.class_choice.choices = list(self.class_choice.choices) + [
-                class_name
-            ]
-            logger.debug(f"Class {class_name} added to choices.")
-
-    def reset_class_options(self):
-        self.class_choice.choices = ["unassigned"]
-        logger.debug("Class choices reset to default.")
-
 
 class TrainingWidget:
     def __init__(
@@ -194,6 +183,8 @@ class TrainingWidget:
         self.user_data = user_data
         self.omero_data = omero_data
         self.class_name = class_name or "Classifier Name"
+        self.user_data_dict = {}
+        self.class_options = {}
         self.training_data_saver = TrainingDataSaver(
             self.class_name,
             self.omero_data,
@@ -202,18 +193,14 @@ class TrainingWidget:
         )
         self.setup_key_bindings(napari.current_viewer())
 
-        self.load_image = magicgui(call_button="Load Images")(self.load_image)
+        self.load_image = magicgui(
+            call_button="Load Images",
+            text_input={"label": "filename", "value": self.class_name},
+        )(self.load_image)
         self.next_image = magicgui(call_button="Next Image")(self.next_image)
         self.previous_image = magicgui(call_button="Previous Image")(
             self.previous_image
         )
-        self.add_class = magicgui(
-            call_button="Enter", text_input={"label": "Class name"}
-        )(self.add_class)
-        self.reset_class_options = magicgui(call_button="Reset class options")(
-            self.reset_class_options
-        )
-
         self.save_training_data = magicgui(
             call_button="Save training data",
             text_input={"label": "filename", "value": self.class_name},
@@ -221,7 +208,19 @@ class TrainingWidget:
 
         self.container = self.create_container()
 
-    def load_image(self):
+    def load_image(self, text_input: str):
+        classifier_name = text_input.strip()
+        self.class_name = classifier_name
+        metadata_path = (
+            Path.home()
+            / "omeroscreen_trainingdata"
+            / classifier_name
+            / "metadata.json"
+        )
+        self._parse_metadata(metadata_path)
+        if self._check_metadata():
+            self._parse_data()
+
         if not self.omero_data.selected_images:
             print("No images to load.")
             return
@@ -229,8 +228,66 @@ class TrainingWidget:
         self.omero_data.selected_classes = [
             "unassigned" for _ in range(selected_images_length)
         ]
+        self.update_class_options(self.class_options)
         self.image_navigator.current_index = 0
         self.image_navigator.update_image()
+
+    def _parse_metadata(self, metadata_path: Path):
+        try:
+            with metadata_path.open("r") as json_file:
+                metadata = json.load(json_file)
+        except FileNotFoundError as e:
+            logger.error(f"Metadata file not found: {metadata_path}")
+            raise FileNotFoundError(
+                f"Metadata file not found: {metadata_path}"
+            ) from e
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding metadata file: {metadata_path}")
+            raise json.JSONDecodeError(
+                f"Error decoding metadata file: {metadata_path}"
+            ) from e
+        self.user_data_dict = metadata["user_data"]
+        self.class_options = metadata["class_options"]
+        self.user_data_dict["well"] = omero_data.well_pos_list[0]
+
+    def _check_metadata(self) -> bool:
+        required_keys = {
+            "well": str,
+            "segmentation": str,
+            "reload": bool,
+            "crop_size": int,
+            "cellcycle": str,
+            "contour": bool,
+            "channels": list,
+        }
+
+        for key, expected_type in required_keys.items():
+            if key not in self.user_data_dict:
+                print(f"Missing key: {key}")
+                return False
+            if self.user_data_dict[key] is None:
+                print(f"None value for key: {key}")
+                return False
+            if not isinstance(self.user_data_dict[key], expected_type):
+                print(
+                    f"Incorrect type for key: {key}. Expected {expected_type}, got {type(self.user_data_dict[key])}"
+                )
+                return False
+
+        return True
+
+    def _parse_data(self):
+        userdata.populate_from_dict(self.user_data_dict)
+        manager = CroppedImageParser(omero_data, userdata)
+        manager.parse_crops()
+        data_selector = RandomImageParser(omero_data, userdata)
+        data_selector.parse_random_images()
+        logger.info(f"Loaded {len(omero_data.selected_images)} images.")
+
+    def update_class_options(self, class_options: list[str]):
+        self.image_navigator.class_options = class_options
+        self.image_navigator.class_choice.choices = class_options
+        self.image_navigator.update_class_choice()
 
     def next_image(self):
         if not self.omero_data.selected_classes:
@@ -243,14 +300,6 @@ class TrainingWidget:
             print("No images loaded.")
             return
         self.image_navigator.previous_image()
-
-    def add_class(self, text_input: str):
-        if text_input:
-            self.image_navigator.add_class(text_input)
-            self.add_class.text_input.value = ""
-
-    def reset_class_options(self):
-        self.image_navigator.reset_class_options()
 
     def save_training_data(self, text_input: str):
         self.training_data_saver._save_data()
@@ -270,12 +319,12 @@ class TrainingWidget:
                 self.load_image,
                 self.previous_image,
                 self.next_image,
-                self.add_class,
                 self.image_navigator.class_choice,
-                self.reset_class_options,
                 self.save_training_data,
             ]
         )
+
+
 class TrainingDataSaver:
     def __init__(
         self,
@@ -342,7 +391,9 @@ class TrainingDataSaver:
 
     def _handle_both_present(self):
         if self.compare_metadata():
-            if self._show_confirmation_dialog(f"Do you want to overwrite {self.file_name}?"):
+            if self._show_confirmation_dialog(
+                f"Do you want to overwrite {self.file_name}?"
+            ):
                 self._save_training_data()
         elif self._show_confirmation_dialog(
             "{self.file_name} and metadata have changed. Do you want to overwrite both?"
@@ -354,13 +405,19 @@ class TrainingDataSaver:
         np.save(self.file_path, self.training_dict)
         self._save_metadata(self.meta_data_path, self.metadata)
         logger.info(f"File and metadata saved to: {self.classifier_dir}")
-        self._show_success_message(f"Data for {self.file_name} and metadata successfully saved.")
+        self._show_success_message(
+            f"Data for {self.file_name} and metadata successfully saved."
+        )
 
     def _save_training_data(self):
         self.training_dict = self._create_training_dict()
         np.save(self.file_path, self.training_dict)
-        logger.info(f"File saved to: {self.file_path}, metadata already present")
-        self._show_success_message(f"Data for image {self.file_name} successfully saved, with metadata present.")
+        logger.info(
+            f"File saved to: {self.file_path}, metadata already present"
+        )
+        self._show_success_message(
+            f"Data for image {self.file_name} successfully saved, with metadata present."
+        )
 
     def _set_paths(self):
         plate = self.omero_data.plate_id
@@ -389,24 +446,30 @@ class TrainingDataSaver:
     def _validate_classifier_name(self, text_input: str):
         if not text_input.strip():
             logger.error("No classifier name provided.")
-            raise ValueError("Failed to create directory: no classifier name provided.")
+            raise ValueError(
+                "Failed to create directory: no classifier name provided."
+            )
 
     def _create_directory(self, directory: Path):
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError as e:
             logger.error(f"Failed to create directory {directory}: {e}")
-            raise ValueError(f"Failed to create directory {directory}: {e}") from e
+            raise ValueError(
+                f"Failed to create directory {directory}: {e}"
+            ) from e
 
     def _create_training_dict(self) -> dict:
-        logger.info(f"Creating training data dictionary with {len(self.omero_data.selected_classes)} entries.")
+        logger.info(
+            f"Creating training data dictionary with {len(self.omero_data.selected_classes)} entries."
+        )
         return {
             "target": self.omero_data.selected_classes,
             "data": self.omero_data.selected_images,
         }
 
     def _create_metadata_dict(self) -> dict:
-        user_data_dict = self.user_data.to_dict()
+        user_data_dict = asdict(self.user_data)
         user_data_dict.pop("well", None)
         return {
             "user_data": user_data_dict,
@@ -437,7 +500,7 @@ class TrainingDataSaver:
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
         msg_box.setText(message)
-        msg_box.setWindowTitle('Warning')
+        msg_box.setWindowTitle("Warning")
         msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         msg_box.setDefaultButton(QMessageBox.No)
         reply = msg_box.exec_()
