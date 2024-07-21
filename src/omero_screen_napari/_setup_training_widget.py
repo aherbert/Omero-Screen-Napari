@@ -212,8 +212,6 @@ class MetaDataSaver:
     def _create_metadata_dict(self) -> dict:
         user_data_dict = asdict(self.user_data)
         user_data_dict.pop("well", None)
-        user_data_dict['rows'] = 0
-        user_data_dict['columns'] = 0
         return {
             "user_data": user_data_dict,
             "class_options": self.image_navigator.class_options,

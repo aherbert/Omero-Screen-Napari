@@ -20,13 +20,15 @@ from omero_screen_napari.welldata_api import well_image_parser
 logger = logging.getLogger("omero-screen-napari")
 
 
-def show_gallery(omero_data: OmeroData, user_data: UserData):
+def show_gallery(omero_data: OmeroData, user_data: UserData, classifier=False):
     try:
         if user_data.reload or omero_data.cropped_images == []:
             cropped_image_parser = CroppedImageParser(omero_data, user_data)
             cropped_image_parser.parse_crops()
 
-        random_image_parser = RandomImageParser(omero_data, user_data)
+        random_image_parser = RandomImageParser(
+            omero_data, user_data, classifier
+        )
         random_image_parser.parse_random_images()
         gallery_parser = ParseGallery(omero_data, user_data)
         gallery_parser.plot_gallery()
@@ -64,6 +66,7 @@ class CroppedImageParser:
         self._images, self._image_ids = self._select_images()
         self._labels = self._select_labels()
         self._crop_data()
+        self._remove_duplicate_images()
         self._omero_data.cropped_images = self._cropped_images
         self._omero_data.cropped_labels = self._cropped_labels
 
@@ -212,6 +215,32 @@ class CroppedImageParser:
             self._cropped_images.append(cropped_image)
             self._cropped_labels.append(corrected_cropped_label)
 
+    def _remove_duplicate_images(self):
+        """
+        Remove duplicate images and their corresponding labels from the dataset.
+        """
+        unique_images = []
+        unique_labels = []
+        seen_images = set()
+        initial_count = len(self._images)
+
+        for image, unique_label in zip(self._images, self._labels):
+            image_tuple = tuple(
+                image.flatten()
+            )  # Convert image to a hashable type
+            if image_tuple not in seen_images:
+                seen_images.add(image_tuple)
+                unique_images.append(image)
+                unique_labels.append(unique_label)
+
+        self._images = unique_images
+        self._labels = unique_labels
+
+        # Calculate and log the number of removed images
+        final_count = len(self._images)
+        removed_count = initial_count - final_count
+        logger.info(f"Removed {removed_count} duplicate images.")
+
 
 # helper functions for cropping images
 def crop_region(
@@ -317,9 +346,12 @@ def erase_masks(cropped_label: np.ndarray) -> np.ndarray:
 
 
 class RandomImageParser:
-    def __init__(self, omero_data: OmeroData, user_data: UserData):
+    def __init__(
+        self, omero_data: OmeroData, user_data: UserData, classifier: bool
+    ):
         self._omero_data: OmeroData = omero_data
         self._user_data: UserData = user_data
+        self._classifier: bool = classifier
         self._chosen_indices: list[int] = []  # indices of images to be used
         self._random_images: list[np.ndarray] = []
         self._random_labels: list[np.ndarray] = []
@@ -327,6 +359,8 @@ class RandomImageParser:
     def parse_random_images(self):
         self._parse_random_index()
         self._parse_random_images()
+        if self._classifier:
+            self._omero_data.selected_crops = self._random_images
         # self._check_identical_arrays()
         self._omero_data.cropped_images = self._remove_chosen_crops(
             self._omero_data.cropped_images
@@ -346,29 +380,6 @@ class RandomImageParser:
             ]
         self._omero_data.selected_images = self._random_images
         self._omero_data.selected_labels = self._random_labels
-
-    def _remove_duplicate_images(self):
-        """
-        Remove duplicate images and their corresponding labels from the dataset.
-        """
-        self._remove_duplicate_images()
-        unique_images = []
-        unique_labels = []
-        seen_images = set()
-
-        for image, unique_label in zip(
-            self._omero_data.cropped_images, self._omero_data.cropped_labels
-        ):
-            image_tuple = tuple(
-                image.flatten()
-            )  # Convert image to a hashable type
-            if image_tuple not in seen_images:
-                seen_images.add(image_tuple)
-                unique_images.append(image)
-                unique_labels.append(unique_label)
-
-        self._omero_data.cropped_images = unique_images
-        self._omero_data.cropped_labels = unique_labels
 
     def _parse_random_index(self):
         """

@@ -280,7 +280,7 @@ class TrainingWidget:
         userdata.populate_from_dict(self.user_data_dict)
         manager = CroppedImageParser(omero_data, userdata)
         manager.parse_crops()
-        data_selector = RandomImageParser(omero_data, userdata)
+        data_selector = RandomImageParser(omero_data, userdata, classifier=True)
         data_selector.parse_random_images()
         logger.info(f"Loaded {len(omero_data.selected_images)} images.")
 
@@ -464,7 +464,7 @@ class TrainingDataSaver:
             f"Creating training data dictionary with {len(self.omero_data.selected_classes)} entries."
         )
         return {
-            "target": self.omero_data.selected_classes,
+            "target": (self.omero_data.selected_crops, self.omero_data.selected_labels),
             "data": self.omero_data.selected_images,
         }
 
