@@ -1,4 +1,3 @@
-
 import logging
 
 from magicgui import magic_factory
@@ -10,6 +9,7 @@ from omero_screen_napari.omero_data_singleton import omero_data
 
 logger = logging.getLogger("omero-screen-napari")
 logging.basicConfig(level=logging.DEBUG)
+
 
 def gallery_gui_widget():
     # Call the magic factories to get the widget instances
@@ -30,7 +30,7 @@ def gallery_gui_widget():
 )
 def reset_widget():
     omero_data.cropped_images = []
-    omero_data.cropped_labels = []
+    omero_data.cropped_masks = []
 
 
 @magic_factory(
@@ -66,8 +66,6 @@ def gallery_widget(
     green_channel: str = "Tub",
     red_channel: str = "EdU",
 ):
-    
-
     channels = [blue_channel, green_channel, red_channel]  # to match rgb order
     channels = [channel for channel in channels if channel != ""]
     user_data_dict = {
@@ -84,6 +82,3 @@ def gallery_widget(
     # UserData.set_omero_data_channel_keys(omero_data.channel_data.keys())
     userdata.populate_from_dict(user_data_dict)
     show_gallery(omero_data, userdata)
-
-
-

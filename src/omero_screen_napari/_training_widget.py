@@ -17,6 +17,10 @@ from omero_screen_napari.gallery_userdata import UserData
 from omero_screen_napari.gallery_userdata_singleton import userdata
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
+from omero_screen_napari.gallery_api import (
+    fill_missing_channels,
+    draw_contours,
+)
 
 logger = logging.getLogger("omero-screen-napari")
 logging.basicConfig(level=logging.DEBUG)
@@ -32,7 +36,8 @@ def training_widget(
 
 
 class ImageNavigator:
-    def __init__(self, class_options: list | None):
+    def __init__(self, class_options: list | None, omero_data: OmeroData):
+        self.omero_data = omero_data
         self.current_index = 0
         self.first_load = True  # Flag to check if it is the first image load
         self.saved_contrast_limits = None  # Variable to save user settings
@@ -51,16 +56,16 @@ class ImageNavigator:
         self.class_choice.changed.connect(self.assign_class)
 
     def next_image(self):
-        if omero_data.selected_images:
+        if self.omero_data.selected_images:
             self.current_index = (self.current_index + 1) % len(
-                omero_data.selected_images
+                self.omero_data.selected_images
             )
             self.update_image()
 
     def previous_image(self):
-        if omero_data.selected_images:
+        if self.omero_data.selected_images:
             self.current_index = (self.current_index - 1) % len(
-                omero_data.selected_images
+                self.omero_data.selected_images
             )
             self.update_image()
 
@@ -72,21 +77,21 @@ class ImageNavigator:
         # Save current settings if there are any layers and it's not the first load
         if not self.first_load and viewer.layers:
             self.saved_contrast_limits = viewer.layers[0].contrast_limits
-            logger.debug(
+            logger.info(
                 f"Saving contrast limits: {self.saved_contrast_limits}"
             )
 
         # Clear existing layers
         viewer.layers.clear()
-        logger.debug("Viewer layers cleared.")
+        logger.info("Viewer layers cleared.")
 
-        if omero_data.selected_images:
-            image = omero_data.selected_images[self.current_index]
-            logger.debug(f"Selected image shape: {image.shape}")
+        if self.omero_data.selected_images:
+            image = self.omero_data.selected_images[self.current_index]
+            logger.info(f"Selected image shape: {image.shape}")
 
             try:
                 # Check the number of channels and adjust accordingly
-                if omero_data.cropped_images[0].shape[-1] == 1:
+                if self.omero_data.selected_crops[0].shape[-1] == 1:
                     # Single channel, load as greyscale
                     grayscale_image = np.mean(image, axis=-1)
                     logger.debug(
@@ -156,12 +161,14 @@ class ImageNavigator:
         logger.debug("Viewer updated successfully.")
 
     def assign_class(self, class_name: str):
-        if omero_data.selected_classes:
-            omero_data.selected_classes[self.current_index] = class_name
+        if self.omero_data.selected_classes:
+            self.omero_data.selected_classes[self.current_index] = class_name
 
     def update_class_choice(self):
-        if omero_data.selected_classes:
-            current_class = omero_data.selected_classes[self.current_index]
+        if self.omero_data.selected_classes:
+            current_class = self.omero_data.selected_classes[
+                self.current_index
+            ]
         else:
             current_class = "unassigned"
         self.class_choice.value = (
@@ -179,18 +186,14 @@ class TrainingWidget:
         user_data: UserData | None,
         omero_data: OmeroData,
     ):
-        self.image_navigator = ImageNavigator(class_options)
+        self.image_navigator = ImageNavigator(class_options, omero_data)
         self.user_data = user_data
         self.omero_data = omero_data
-        self.class_name = class_name or "Classifier Name"
+        self.class_name = class_name
+
         self.user_data_dict = {}
         self.class_options = {}
-        self.training_data_saver = TrainingDataSaver(
-            self.class_name,
-            self.omero_data,
-            self.user_data,
-            self.image_navigator,
-        )
+        self.training_data_saver = None
         self.setup_key_bindings(napari.current_viewer())
 
         self.load_image = magicgui(
@@ -203,34 +206,144 @@ class TrainingWidget:
         )
         self.save_training_data = magicgui(
             call_button="Save training data",
-            text_input={"label": "filename", "value": self.class_name},
         )(self.save_training_data)
 
         self.container = self.create_container()
 
     def load_image(self, text_input: str):
-        classifier_name = text_input.strip()
-        self.class_name = classifier_name
-        metadata_path = (
-            Path.home()
-            / "omeroscreen_trainingdata"
-            / classifier_name
-            / "metadata.json"
-        )
-        self._parse_metadata(metadata_path)
-        if self._check_metadata():
-            self._parse_data()
+        try:
+            classifier_name = text_input.strip()
+            if not classifier_name:
+                raise ValueError("Classifier name cannot be empty.")
+            self.class_name = classifier_name
+            file_name, file_path, metadata_path = self._set_paths()
+            if file_path.exists():
+                self._parse_classified_data(file_path, metadata_path)
+            else:
+                self._parse_metadata(metadata_path)
+                if self._check_metadata():
+                    self._parse_data()
+                    selected_images_length = len(
+                        self.omero_data.selected_images
+                    )
+                    self.omero_data.selected_classes = [
+                        "unassigned" for _ in range(selected_images_length)
+                    ]
 
-        if not self.omero_data.selected_images:
-            print("No images to load.")
-            return
-        selected_images_length = len(self.omero_data.selected_images)
-        self.omero_data.selected_classes = [
-            "unassigned" for _ in range(selected_images_length)
-        ]
-        self.update_class_options(self.class_options)
-        self.image_navigator.current_index = 0
-        self.image_navigator.update_image()
+            if not self.omero_data.selected_images:
+                logger.warning("Could not load images.")
+                return
+
+            self.update_class_options(self.class_options)
+            self.image_navigator.current_index = 0
+            self.image_navigator.update_image()
+
+            # Initialize TrainingDataSaver after class_name is set
+            self.training_data_saver = TrainingDataSaver(
+                self.class_name,
+                self.omero_data,
+                self.user_data,
+                self.image_navigator,
+            )
+            logger.info(
+                f"TrainingDataSaver initialized for classifier {self.class_name}"
+            )
+
+        except ValueError as ve:
+            logger.error(f"ValueError: {ve}")
+            self._show_error_message(f"Error: {ve}")
+
+        except FileNotFoundError as fnf_error:
+            logger.error(f"FileNotFoundError: {fnf_error}")
+            self._show_error_message(
+                f"Metadata file not found: {metadata_path}"
+            )
+
+        except json.JSONDecodeError as json_error:
+            logger.error(f"JSONDecodeError: {json_error}")
+            self._show_error_message(
+                f"Error decoding metadata file: {metadata_path}"
+            )
+
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Unexpected error: {e}")
+            self._show_error_message(f"An unexpected error occurred: {e}")
+
+    def _set_paths(self):
+        plate = self.omero_data.plate_id
+        well = self.omero_data.well_pos_list[0]
+        image = self.omero_data.image_index[0]
+        file_name = f"{plate}_{well}_{image}.npy"
+        classifier_dir = (
+            Path.home() / "omeroscreen_trainingdata" / self.class_name
+        )
+        file_path = classifier_dir / file_name
+        meta_data_path = classifier_dir / "metadata.json"
+        return file_name, file_path, meta_data_path
+
+    def _parse_classified_data(self, file_path, metadata_path):
+        if metadata_path.exists():
+            logger.info(
+                f"Classifier data file and metadata file exist: {file_path}, loading data"
+            )
+            self._parse_metadata(metadata_path)
+            self.user_data.populate_from_dict(self.user_data_dict)
+            self._parse_saved_imagedata(file_path)
+        else:
+            logger.error(
+                f"Classifier data file {file_path} but metadata file {metadata_path} not found."
+            )
+            self._show_error_message(
+                f"metadata file not found in: {self.class_name} directory"
+            )
+
+    def _parse_saved_imagedata(self, file_path):
+        try:
+            self.omero_data.selected_crops, self.omero_data.selected_labels = (
+                np.load(file_path, allow_pickle=True).item()["data"]
+            )
+            self.omero_data.selected_classes = np.load(
+                file_path, allow_pickle=True
+            ).item()["target"]
+            masked_images = self._apply_mask_to_images()
+            processed_masked_images = [
+                fill_missing_channels(img, self.user_data.channels)
+                for img in masked_images
+            ]
+            if self.user_data.contour:
+                processed_masked_images = [
+                    draw_contours(img, label)
+                    for img, label in zip(
+                        processed_masked_images,
+                        self.omero_data.selected_labels,
+                    )
+                ]
+            self.omero_data.selected_images = processed_masked_images
+            logger.info(
+                f"Loaded {len(self.omero_data.selected_images)} images."
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error loading images: {e}")
+            self._show_error_message(f"Error loading images: {e}")
+
+    def _apply_mask_to_images(self):
+        """
+        Nullify pixels in color images that don't overlap with the corresponding masks.
+        Images are expected to be in the shape of (H, W, 3) and masks in the shape of (H, W).
+        """
+        masked_images = []
+        for image, mask in zip(
+            self.omero_data.selected_crops, self.omero_data.selected_labels
+        ):  # type: ignore
+            # Ensure the mask is expanded to match the image's 3 channels
+            expanded_mask = (
+                np.repeat(mask[:, :, np.newaxis], image.shape[2], axis=2) > 0
+            )
+            # Apply the expanded mask to the image
+            masked_image = np.where(expanded_mask, image, 0)
+            masked_images.append(masked_image)
+
+        return masked_images
 
     def _parse_metadata(self, metadata_path: Path):
         try:
@@ -280,7 +393,9 @@ class TrainingWidget:
         userdata.populate_from_dict(self.user_data_dict)
         manager = CroppedImageParser(omero_data, userdata)
         manager.parse_crops()
-        data_selector = RandomImageParser(omero_data, userdata, classifier=True)
+        data_selector = RandomImageParser(
+            omero_data, userdata, classifier=True
+        )
         data_selector.parse_random_images()
         logger.info(f"Loaded {len(omero_data.selected_images)} images.")
 
@@ -301,8 +416,11 @@ class TrainingWidget:
             return
         self.image_navigator.previous_image()
 
-    def save_training_data(self, text_input: str):
-        self.training_data_saver._save_data()
+    def save_training_data(self):
+        if self.training_data_saver:
+            self.training_data_saver._save_data()
+        else:
+            print("Training data saver not initialized.")
 
     def setup_key_bindings(self, viewer):
         @viewer.bind_key("w")
@@ -379,13 +497,13 @@ class TrainingDataSaver:
         if self.compare_metadata():
             self._save_training_data()
         elif self._show_confirmation_dialog(
-            "Metadata has changed. Do you want to overwrite them and save {self.file_name}?"
+            f"Metadata has changed. Do you want to overwrite them and save {self.file_name}?"
         ):
             self.save_both()
 
     def _handle_training_data_present(self):
         if self._show_confirmation_dialog(
-            "The file {self.file_name} already exists without metadata. Do you want to overwrite the file and save the metadata?"
+            f"The file {self.file_name} already exists without metadata. Do you want to overwrite the file and save the metadata?"
         ):
             self.save_both()
 
@@ -464,8 +582,11 @@ class TrainingDataSaver:
             f"Creating training data dictionary with {len(self.omero_data.selected_classes)} entries."
         )
         return {
-            "target": (self.omero_data.selected_crops, self.omero_data.selected_labels),
-            "data": self.omero_data.selected_images,
+            "data": (
+                self.omero_data.selected_crops,
+                self.omero_data.selected_labels,
+            ),
+            "target": self.omero_data.selected_classes,
         }
 
     def _create_metadata_dict(self) -> dict:

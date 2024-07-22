@@ -68,7 +68,7 @@ class CroppedImageParser:
         self._crop_data()
         self._remove_duplicate_images()
         self._omero_data.cropped_images = self._cropped_images
-        self._omero_data.cropped_labels = self._cropped_labels
+        self._omero_data.cropped_masks = self._cropped_labels
 
     def _select_images(self) -> tuple[np.ndarray, list[int]]:
         images = scale_image(
@@ -365,8 +365,8 @@ class RandomImageParser:
         self._omero_data.cropped_images = self._remove_chosen_crops(
             self._omero_data.cropped_images
         )
-        self._omero_data.cropped_labels = self._remove_chosen_crops(
-            self._omero_data.cropped_labels
+        self._omero_data.cropped_masks = self._remove_chosen_crops(
+            self._omero_data.cropped_masks
         )
         self._apply_mask_to_images()
         self._random_images = [
@@ -406,7 +406,7 @@ class RandomImageParser:
             self._omero_data.cropped_images[i] for i in self._chosen_indices
         ]
         self._random_labels = [
-            self._omero_data.cropped_labels[i] for i in self._chosen_indices
+            self._omero_data.cropped_masks[i] for i in self._chosen_indices
         ]
 
     def _check_identical_arrays(self):
