@@ -42,7 +42,8 @@ requires-python = ">=3.8"
 omero-screen-napari = 'omero_screen_napari:napari.yaml'
 
 [project.scripts]
-omero-screen-napari = "omero_screen_napari.bin.load_training_data:main"
+load_trainingdata = "bin.load_trainingdata:main"
+
 
 [tool.setuptools_scm]
 write_to = "src/omero_screen_napari/_version.py"
