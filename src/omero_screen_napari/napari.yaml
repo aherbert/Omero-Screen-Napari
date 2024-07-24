@@ -1,5 +1,6 @@
 name: omero-screen-napari
 display_name: Omero Screen Napari
+entry_point: omero_screen_napari
 
 contributions:
   commands:
