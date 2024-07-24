@@ -20,7 +20,8 @@ if __name__ == "__main__":
     path = "/Users/hh65/omeroscreen_trainingdata/nuclei_classifier/1907_B5_0.npy"
     returned_data = load_imagedata(path)
     print(returned_data.keys())
-    print(returned_data['data'][1][2].shape)
+    print(returned_data['data'][0][1].max())
 
-    show_image(path, 50, mask=False)
+
+# show_image(path, 1, mask=True)
 

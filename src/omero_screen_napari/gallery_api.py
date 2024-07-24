@@ -649,7 +649,7 @@ def run_gallery_parser(
                         gallery_path,
                         conn,
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning(e)
         except Exception as e:
             logger.error(e)

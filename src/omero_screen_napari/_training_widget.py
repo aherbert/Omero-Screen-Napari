@@ -12,15 +12,13 @@ from qtpy.QtWidgets import QMessageBox
 from omero_screen_napari.gallery_api import (
     CroppedImageParser,
     RandomImageParser,
+    draw_contours,
+    fill_missing_channels,
 )
 from omero_screen_napari.gallery_userdata import UserData
 from omero_screen_napari.gallery_userdata_singleton import userdata
 from omero_screen_napari.omero_data import OmeroData
 from omero_screen_napari.omero_data_singleton import omero_data
-from omero_screen_napari.gallery_api import (
-    fill_missing_channels,
-    draw_contours,
-)
 
 logger = logging.getLogger("omero-screen-napari")
 logging.basicConfig(level=logging.DEBUG)
@@ -74,89 +72,76 @@ class ImageNavigator:
         current_choices = self.class_choice.choices
         self.class_choice.changed.disconnect(self.assign_class)
 
-        # Save current settings if there are any layers and it's not the first load
-        if not self.first_load and viewer.layers:
-            self.saved_contrast_limits = viewer.layers[0].contrast_limits
-            logger.info(
-                f"Saving contrast limits: {self.saved_contrast_limits}"
-            )
-
-        # Clear existing layers
-        viewer.layers.clear()
-        logger.info("Viewer layers cleared.")
+        self._save_current_settings(viewer)
+        self._clear_existing_layers(viewer)
 
         if self.omero_data.selected_images:
             image = self.omero_data.selected_images[self.current_index]
             logger.info(f"Selected image shape: {image.shape}")
 
-            try:
-                # Check the number of channels and adjust accordingly
-                if self.omero_data.selected_crops[0].shape[-1] == 1:
-                    # Single channel, load as greyscale
-                    grayscale_image = np.mean(image, axis=-1)
-                    logger.debug(
-                        f"Grayscale image shape: {grayscale_image.shape}"
-                    )
-                    inverted_image = 1.0 - grayscale_image  # Invert the image
-                    viewer.add_image(
-                        inverted_image,
-                        name=f"Cropped Image {self.current_index}",
-                        colormap="gray",
-                    )
-                    logger.debug("Inverted grayscale image added to viewer.")
-                else:
-                    # Three channels, load as RGB
-                    viewer.add_image(
-                        image, name=f"Cropped Image {self.current_index}"
-                    )
-                    logger.debug("RGB image added to viewer.")
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"Error adding image to viewer: {e}")
-                return
-
-            # Verify the layer was added
-            if not viewer.layers:
-                logger.error(
-                    "No layers present in the viewer after adding the image."
-                )
-                return
-
-            # Apply contrast limits if there are any and not the first load
-            if not self.first_load and self.saved_contrast_limits:
-                min_intensity, max_intensity = (
-                    viewer.layers[0].data.min(),
-                    viewer.layers[0].data.max(),
-                )
-                if (
-                    self.saved_contrast_limits[0] >= min_intensity
-                    and self.saved_contrast_limits[1] <= max_intensity
-                ):
-                    logger.debug(
-                        f"Applying contrast limits: {self.saved_contrast_limits}"
-                    )
-                    viewer.layers[
-                        0
-                    ].contrast_limits = self.saved_contrast_limits
-                else:
-                    logger.warning(
-                        f"Contrast limits {self.saved_contrast_limits} are out of range for the new image intensity values."
-                    )
-            else:
-                logger.debug(
-                    "No contrast limits to apply or first image load."
-                )
+            self._add_image_to_viewer(viewer, image)
+            self._verify_layer_added(viewer)
+            self._apply_saved_contrast_limits(viewer)
 
             self.first_load = False  # Update the flag after the first load
         else:
             logger.warning("No selected images to load.")
 
-        # Restore class choices and reconnect signal
+        self._restore_class_choices(current_choices)
+        self._refresh_viewer(viewer)
+
+    def _save_current_settings(self, viewer):
+        if not self.first_load and viewer.layers:
+            self.saved_contrast_limits = viewer.layers[0].contrast_limits
+            logger.info(f"Saving contrast limits: {self.saved_contrast_limits}")
+
+    def _clear_existing_layers(self, viewer):
+        viewer.layers.clear()
+        logger.info("Viewer layers cleared.")
+
+    def _add_image_to_viewer(self, viewer, image):
+        try:
+            if self.omero_data.selected_crops[0].shape[-1] == 1:
+                self._add_grayscale_image(viewer, image)
+            else:
+                self._add_rgb_image(viewer, image)
+        except Exception as e:
+            logger.error(f"Error adding image to viewer: {e}")
+
+    def _add_grayscale_image(self, viewer, image):
+        grayscale_image = np.mean(image, axis=-1)
+        logger.debug(f"Grayscale image shape: {grayscale_image.shape}")
+        inverted_image = 1.0 - grayscale_image  # Invert the image
+        viewer.add_image(inverted_image, name=f"Cropped Image {self.current_index}", colormap="gray")
+        logger.debug("Inverted grayscale image added to viewer.")
+
+    def _add_rgb_image(self, viewer, image):
+        viewer.add_image(image, name=f"Cropped Image {self.current_index}")
+        logger.debug("RGB image added to viewer.")
+
+    def _verify_layer_added(self, viewer):
+        if not viewer.layers:
+            logger.error("No layers present in the viewer after adding the image.")
+            return
+
+    def _apply_saved_contrast_limits(self, viewer):
+        if not self.first_load and self.saved_contrast_limits:
+            min_intensity, max_intensity = viewer.layers[0].data.min(), viewer.layers[0].data.max()
+            if self.saved_contrast_limits[0] >= min_intensity and self.saved_contrast_limits[1] <= max_intensity:
+                logger.debug(f"Applying contrast limits: {self.saved_contrast_limits}")
+                viewer.layers[0].contrast_limits = self.saved_contrast_limits
+            else:
+                logger.warning(f"Contrast limits {self.saved_contrast_limits} are out of range for the new image intensity values.")
+        else:
+            logger.debug("No contrast limits to apply or first image load.")
+
+    def _restore_class_choices(self, current_choices):
         self.class_choice.choices = current_choices
         self.class_choice.changed.connect(self.assign_class)
         self.update_class_choice()
         logger.debug("Class choices restored and signal reconnected.")
 
-        # Force a refresh of the viewer
+    def _refresh_viewer(self, viewer):
         viewer.update_console({"layers": viewer.layers})
         logger.debug("Viewer updated successfully.")
 
@@ -166,9 +151,7 @@ class ImageNavigator:
 
     def update_class_choice(self):
         if self.omero_data.selected_classes:
-            current_class = self.omero_data.selected_classes[
-                self.current_index
-            ]
+            current_class = self.omero_data.selected_classes[self.current_index]
         else:
             current_class = "unassigned"
         self.class_choice.value = (
@@ -251,23 +234,23 @@ class TrainingWidget:
 
         except ValueError as ve:
             logger.error(f"ValueError: {ve}")
-            self._show_error_message(f"Error: {ve}")
+            _show_error_message(f"Error: {ve}")
 
         except FileNotFoundError as fnf_error:
             logger.error(f"FileNotFoundError: {fnf_error}")
-            self._show_error_message(
+            _show_error_message(
                 f"Metadata file not found: {metadata_path}"
             )
 
         except json.JSONDecodeError as json_error:
             logger.error(f"JSONDecodeError: {json_error}")
-            self._show_error_message(
+            _show_error_message(
                 f"Error decoding metadata file: {metadata_path}"
             )
 
         except Exception as e:  # noqa: BLE001
             logger.error(f"Unexpected error: {e}")
-            self._show_error_message(f"An unexpected error occurred: {e}")
+            _show_error_message(f"An unexpected error occurred: {e}")
 
     def _set_paths(self):
         plate = self.omero_data.plate_id
@@ -293,7 +276,7 @@ class TrainingWidget:
             logger.error(
                 f"Classifier data file {file_path} but metadata file {metadata_path} not found."
             )
-            self._show_error_message(
+            _show_error_message(
                 f"metadata file not found in: {self.class_name} directory"
             )
 
@@ -324,7 +307,7 @@ class TrainingWidget:
             )
         except Exception as e:  # noqa: BLE001
             logger.error(f"Error loading images: {e}")
-            self._show_error_message(f"Error loading images: {e}")
+            _show_error_message(f"Error loading images: {e}")
 
     def _apply_mask_to_images(self):
         """
@@ -472,7 +455,7 @@ class TrainingDataSaver:
             self._handle_saving_logic(file_check)
         except Exception as e:  # noqa: BLE001
             logger.error(e)
-            self._show_error_message(str(e))
+            _show_error_message(str(e))
 
     def _create_and_save(self):
         self._create_directory(self.classifier_dir)
@@ -496,24 +479,24 @@ class TrainingDataSaver:
     def _handle_metadata_present(self):
         if self.compare_metadata():
             self._save_training_data()
-        elif self._show_confirmation_dialog(
+        elif _show_confirmation_dialog(
             f"Metadata has changed. Do you want to overwrite them and save {self.file_name}?"
         ):
             self.save_both()
 
     def _handle_training_data_present(self):
-        if self._show_confirmation_dialog(
+        if _show_confirmation_dialog(
             f"The file {self.file_name} already exists without metadata. Do you want to overwrite the file and save the metadata?"
         ):
             self.save_both()
 
     def _handle_both_present(self):
         if self.compare_metadata():
-            if self._show_confirmation_dialog(
+            if _show_confirmation_dialog(
                 f"Do you want to overwrite {self.file_name}?"
             ):
                 self._save_training_data()
-        elif self._show_confirmation_dialog(
+        elif _show_confirmation_dialog(
             "{self.file_name} and metadata have changed. Do you want to overwrite both?"
         ):
             self.save_both()
@@ -523,7 +506,7 @@ class TrainingDataSaver:
         np.save(self.file_path, self.training_dict)
         self._save_metadata(self.meta_data_path, self.metadata)
         logger.info(f"File and metadata saved to: {self.classifier_dir}")
-        self._show_success_message(
+        _show_success_message(
             f"Data for {self.file_name} and metadata successfully saved."
         )
 
@@ -533,7 +516,7 @@ class TrainingDataSaver:
         logger.info(
             f"File saved to: {self.file_path}, metadata already present"
         )
-        self._show_success_message(
+        _show_success_message(
             f"Data for image {self.file_name} successfully saved, with metadata present."
         )
 
@@ -601,28 +584,28 @@ class TrainingDataSaver:
         with meta_data_path.open("w") as json_file:
             json.dump(metadata, json_file)
 
-    def _show_error_message(self, message: str):
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(message)
-        msg_box.setWindowTitle("Error")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+def _show_error_message(message: str):
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Warning)
+    msg_box.setText(message)
+    msg_box.setWindowTitle("Error")
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec_()
 
-    def _show_success_message(self, message: str):
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(message)
-        msg_box.setWindowTitle("Success")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+def _show_success_message(message: str):
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Information)
+    msg_box.setText(message)
+    msg_box.setWindowTitle("Success")
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec_()
 
-    def _show_confirmation_dialog(self, message: str) -> bool:
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Warning)
-        msg_box.setText(message)
-        msg_box.setWindowTitle("Warning")
-        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        msg_box.setDefaultButton(QMessageBox.No)
-        reply = msg_box.exec_()
-        return reply == QMessageBox.Yes
+def _show_confirmation_dialog(message: str) -> bool:
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Warning)
+    msg_box.setText(message)
+    msg_box.setWindowTitle("Warning")
+    msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+    msg_box.setDefaultButton(QMessageBox.No)
+    reply = msg_box.exec_()
+    return reply == QMessageBox.Yes

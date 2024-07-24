@@ -1,3 +1,6 @@
+import os
+
+os.environ["USE_LOCAL_ENV"] = "1"
 import napari
 from omero_screen_napari._welldata_widget import (
     MockEvent,
@@ -12,9 +15,9 @@ from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.welldata_api import parse_omero_data
 
 # Define the plate ID, well position, and image index
-plate_id = "1907"
-well_pos_list = "E5"
-images = "5"
+plate_id = "53"
+well_pos_list = "C2"
+images = "0"
 
 
 # Create a Napari viewer instance
