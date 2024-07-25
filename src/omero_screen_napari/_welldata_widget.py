@@ -42,7 +42,6 @@ class MetadataWidget(QWidget):
     def __init__(self, metadata):
         super().__init__()
         self.layout = QVBoxLayout()
-
         self.label = QLabel()
         label_text = "".join(f"{key}: {value}\n" for key, value in metadata.items())
         self.label.setText(

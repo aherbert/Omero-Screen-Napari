@@ -43,6 +43,7 @@ omero-screen-napari = 'omero_screen_napari:napari.yaml'
 
 [project.scripts]
 load_trainingdata = "bin.load_trainingdata:main"
+load_image = "bin.load_image:main"
 
 
 [tool.setuptools_scm]

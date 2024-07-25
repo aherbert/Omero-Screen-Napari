@@ -19,8 +19,8 @@ from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.welldata_api import parse_omero_data
 
 # Define the plate ID, well position, and image index
-plate_id = "1856"
-well_pos_list = "B5"
+plate_id = "53"
+well_pos_list = "C2"
 images = "0"
 
 user_data_dict = {
@@ -47,7 +47,7 @@ def load_and_visualize_data(viewer, plate_id, well_pos_list, images):
     userdata.populate_from_dict(user_data_dict)
     manager = CroppedImageParser(omero_data, userdata)
     manager.parse_crops()
-    data_selector = RandomImageParser(omero_data, userdata)
+    data_selector = RandomImageParser(omero_data, userdata, classifier=False)
     data_selector.parse_random_images()
     print(len(omero_data.cropped_images))
     print(len(omero_data.selected_images))

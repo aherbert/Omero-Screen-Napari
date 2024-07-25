@@ -25,11 +25,10 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def training_widget(
-    class_options: list[str] | None = None,
     class_name: str | None = None,
     userdata: UserData | None = userdata,
 ) -> Container:
-    widget = TrainingWidget(class_options, class_name, userdata, omero_data)
+    widget = TrainingWidget(class_name, userdata, omero_data)
     return widget.container
 
 
@@ -164,10 +163,10 @@ class ImageNavigator:
 class TrainingWidget:
     def __init__(
         self,
-        class_options: list[str] | None,
         class_name: str | None,
         user_data: UserData | None,
         omero_data: OmeroData,
+        class_options: list[str] | None = None,
     ):
         self.image_navigator = ImageNavigator(class_options, omero_data)
         self.user_data = user_data
