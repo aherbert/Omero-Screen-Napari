@@ -2,7 +2,6 @@ import argparse
 import logging
 
 import napari
-from omero_screen_napari._training_widget import TrainingWidget
 from omero_screen_napari._welldata_widget import (
     MockEvent,
     add_image_to_viewer,
@@ -12,7 +11,6 @@ from omero_screen_napari._welldata_widget import (
     set_color_maps,
     welldata_widget,
 )
-from omero_screen_napari.gallery_userdata_singleton import userdata
 from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.welldata_api import parse_omero_data
 
@@ -36,14 +34,6 @@ def load_and_visualize_data(viewer, plate_id, well_pos_list, images):
     slider_position_change(mock_event)
 
 
-def setup_training_widget(viewer, classifier_name):
-    training_widget_instance = TrainingWidget(
-        classifier_name, userdata, omero_data
-    )
-    viewer.window.add_dock_widget(
-        training_widget_instance.container, area="right"
-    )
-    training_widget_instance.load_image(classifier_name)
 
 
 def main():
@@ -53,14 +43,12 @@ def main():
     parser.add_argument("plate_id", type=str, help="Plate ID")
     parser.add_argument("well", type=str, help="Well Position")
     parser.add_argument("image", type=str, help="Image Index")
-    parser.add_argument("classifier_name", type=str, help="Classifier Name")
 
     args = parser.parse_args()
 
     plate_id = args.plate_id
     well_pos_list = args.well
     images = args.image
-    classifier_name = args.classifier_name
 
     viewer = napari.Viewer()
     load_and_visualize_data(viewer, plate_id, well_pos_list, images)
@@ -75,7 +63,6 @@ def main():
     widget_instance.viewer.value = viewer  # Set the viewer instance
 
     viewer.window.add_dock_widget(widget_instance, area="right")
-    setup_training_widget(viewer, classifier_name)
     napari.run()
 
 
