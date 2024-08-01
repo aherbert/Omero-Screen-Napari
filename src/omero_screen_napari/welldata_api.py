@@ -4,6 +4,7 @@ and collect them in the omero_data data clasee to be used by the napari viewer.
 """
 
 import logging
+import omero
 import random
 import re
 import traceback
@@ -13,6 +14,7 @@ from typing import Callable, Optional, Tuple
 import numpy as np
 import polars as pl
 from ezomero import get_image  # type: ignore
+
 from omero.gateway import (
     BlitzGateway,
     FileAnnotationWrapper,
@@ -23,7 +25,6 @@ from omero.gateway import (
     _OriginalFileWrapper,
 )
 from qtpy.QtWidgets import QMessageBox
-from skimage import exposure
 from tqdm import tqdm
 
 from omero_screen_napari.omero_data import OmeroData
@@ -596,8 +597,8 @@ class FlatfieldMaskParser:
         channel_check = True
         for key, value in self._flatfield_channels.items():
             # Extract the number from key, e.g., 'channel_1' -> '1'
-            channel_number = key.split('_')[-1]
-        
+            channel_number = key.split("_")[-1]
+
             # Find the channel name that corresponds to this number in channels
             expected_name = None
             for name, num in self._omero_data.channel_data.items():
@@ -608,7 +609,7 @@ class FlatfieldMaskParser:
             if expected_name != value:
                 channel_check = False
                 break
-    
+
         if not channel_check:
             error_message = "Inconsistency found: flatfield_mask and plate_map have different channels"
             logger.error(error_message)
@@ -993,17 +994,46 @@ class ImageParser:
         """
         Collects images and image arrays for the well and adds the to the image_ids and image_arrays list.
         """
+
         logger.info(f"Collecting images for well {self._well.getWellPos()}")
         for index in tqdm(self._image_index):
             if image := self._well.getImage(index):
-                image, image_array = get_image(self._conn, image.getId())
+                if mip_id := self.check_mip(image):
+                    logger.info(
+                        f"Image with index {index} has Z-stacks, looking for MIP with id {mip_id}."
+                    )
+                    _, image_array = get_image(self._conn, int(mip_id))
+                else:
+                    _, image_array = get_image(self._conn, image.getId())
                 flatfield_corrected_image = self._flatfield_correct_image(
                     image_array
                 )
-                self._image_arrays.append(
-                    flatfield_corrected_image
-                )
+                self._image_arrays.append(flatfield_corrected_image)
                 self._image_ids.append(image.getId())
+            else:
+                logger.error(
+                    f"Image with index {index} not found in well {self._well.getWellPos()}"
+                )
+                raise ValueError(
+                    f"Image with index {index} not found in well {self._well.getWellPos()}"
+                )
+
+    def check_mip(self, image):
+        if map_anns := image.listAnnotations(
+        ns=omero.constants.metadata.NSCLIENTMAPANNOTATION
+        ):
+            for ann in map_anns:
+                ann_values = dict(ann.getValue())
+                for item in ann_values.values():
+                    print(item)
+                    if "mip" in item:
+                        return item.split("_")[-1]
+        if image.getSizeZ() > 1: # check if image has z-stacks even though no mip is assigned
+            raise ValueError(
+                f"Image with index {self._image_index} has Z-stacks but no MIP assigned."
+            )
+        return None
+
 
     def _flatfield_correct_image(self, image_array):
         """
@@ -1020,7 +1050,6 @@ class ImageParser:
             corrected_array = corrected_array[..., np.newaxis]
         logger.debug(f"Corrected image shape: {corrected_array.shape}")
         return corrected_array
-
 
     def _check_label_data(self):
         label_names = [
