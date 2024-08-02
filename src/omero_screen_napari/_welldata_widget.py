@@ -157,11 +157,11 @@ def set_color_maps(viewer: Viewer) -> None:
 
 def add_label_layers(viewer: Viewer) -> None:
     scale = omero_data.pixel_size
-    if len(omero_data.labels.shape) == 3:
+    if omero_data.labels.shape[-1] == 1:
         viewer.add_labels(
             omero_data.labels.astype(int), name="Nuclei Masks", scale=scale
         )
-    elif omero_data.labels.shape[3] == 2:
+    elif omero_data.labels.shape[-1] == 2:
         channel_1_masks = omero_data.labels[..., 0].astype(int)
         channel_2_masks = omero_data.labels[..., 1].astype(int)
         viewer.add_labels(channel_1_masks, name="Nuclei Masks", scale=scale)

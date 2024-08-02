@@ -4,7 +4,6 @@ and collect them in the omero_data data clasee to be used by the napari viewer.
 """
 
 import logging
-import omero
 import random
 import re
 import traceback
@@ -12,9 +11,9 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 import numpy as np
+import omero
 import polars as pl
 from ezomero import get_image  # type: ignore
-
 from omero.gateway import (
     BlitzGateway,
     FileAnnotationWrapper,
@@ -32,10 +31,12 @@ from omero_screen_napari.omero_data_singleton import (
     omero_data,
     reset_omero_data,
 )
-from omero_screen_napari.utils import omero_connect
+from omero_screen_napari.utils import omero_connect, correct_channel_order
 
-logger = logging.getLogger("omero-screen-napari")
-get_image: Callable = get_image
+logger = logging.getLogger("omero-screen-napari.welldata_api")
+
+
+get_image: Callable = get_image  # allows type hints for get_image
 
 
 @omero_connect
@@ -949,25 +950,30 @@ class ImageParser:
         Otherwise, the new images are added to the omero_data object.
         """
         self._collect_images()
+
+        # Determine the axes to squeeze based on the number of timepoints
+        squeeze_axes = (2,) if self._image_arrays[0].shape[0] > 1 else (1, 2)
+
+        # Stack and squeeze the new images
+        new_images = np.squeeze(
+            np.stack(self._image_arrays, axis=0), axis=squeeze_axes
+        )
+
         if self._omero_data.images.shape == (0,):
-            self._omero_data.images = np.squeeze(
-                np.stack(self._image_arrays, axis=0), axis=(1, 2)
-            )
+            self._omero_data.images = new_images
             self._omero_data.image_ids = self._image_ids
             logger.debug(
-                f"Images loaded to empty omero_data.images, new shape: {omero_data.images.shape}"
-            )  # noqa: G004
+                f"Images loaded to empty omero_data.images, new shape: {self._omero_data.images.shape}"
+            )
         else:
             self._omero_data.images = np.concatenate(
-                (
-                    self._omero_data.images,
-                    np.squeeze(
-                        np.stack(self._image_arrays, axis=0), axis=(1, 2)
-                    ),
-                ),
-                axis=0,
+                (self._omero_data.images, new_images), axis=0
             )
             self._omero_data.image_ids.extend(self._image_ids)
+
+        logger.debug(
+            f"Images shape after processing: {self._omero_data.images.shape}"
+        )
 
     def _parse_labels(self):
         """
@@ -977,6 +983,7 @@ class ImageParser:
         """
         self._collect_labels()
         if self._omero_data.labels.size == 0:
+            logger.debug(f"Labels shape: {self._label_arrays[0].shape}")
             self._omero_data.labels = np.stack(self._label_arrays, axis=0)
 
             logger.debug(
@@ -1008,6 +1015,7 @@ class ImageParser:
                 flatfield_corrected_image = self._flatfield_correct_image(
                     image_array
                 )
+                logger.debug(f"Image shape: {flatfield_corrected_image.shape}")
                 self._image_arrays.append(flatfield_corrected_image)
                 self._image_ids.append(image.getId())
             else:
@@ -1020,7 +1028,7 @@ class ImageParser:
 
     def check_mip(self, image):
         if map_anns := image.listAnnotations(
-        ns=omero.constants.metadata.NSCLIENTMAPANNOTATION
+            ns=omero.constants.metadata.NSCLIENTMAPANNOTATION
         ):
             for ann in map_anns:
                 ann_values = dict(ann.getValue())
@@ -1028,12 +1036,13 @@ class ImageParser:
                     print(item)
                     if "mip" in item:
                         return item.split("_")[-1]
-        if image.getSizeZ() > 1: # check if image has z-stacks even though no mip is assigned
+        if (
+            image.getSizeZ() > 1
+        ):  # check if image has z-stacks even though no mip is assigned
             raise ValueError(
                 f"Image with index {self._image_index} has Z-stacks but no MIP assigned."
             )
         return None
-
 
     def _flatfield_correct_image(self, image_array):
         """
@@ -1082,4 +1091,5 @@ class ImageParser:
 
         for label_data in relevant_label_data:
             _, label_array = get_image(self._conn, label_data.getId())
-            self._label_arrays.append(label_array.squeeze())
+            corrected_label_array = correct_channel_order(label_array)
+            self._label_arrays.append(corrected_label_array.squeeze())

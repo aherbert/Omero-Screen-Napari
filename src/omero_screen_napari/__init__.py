@@ -22,7 +22,7 @@ def setup_logging():
 
     # Create a console handler for the logger
     ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)  # Ensure it captures all levels processed by the logger
+    ch.setLevel(logging.DEBUG)  # Ensure it captures all levels processed by the logger
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s")
     ch.setFormatter(formatter)
     app_logger.addHandler(ch)
