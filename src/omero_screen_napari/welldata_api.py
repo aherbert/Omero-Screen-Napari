@@ -958,7 +958,6 @@ class ImageParser:
         new_images = np.squeeze(
             np.stack(self._image_arrays, axis=0), axis=squeeze_axes
         )
-
         if self._omero_data.images.shape == (0,):
             self._omero_data.images = new_images
             self._omero_data.image_ids = self._image_ids
@@ -1091,5 +1090,11 @@ class ImageParser:
 
         for label_data in relevant_label_data:
             _, label_array = get_image(self._conn, label_data.getId())
-            corrected_label_array = correct_channel_order(label_array)
-            self._label_arrays.append(corrected_label_array.squeeze())
+            if label_array.shape[-1] == 2:
+                corrected_label_array = correct_channel_order(label_array)
+                self._label_arrays.append(corrected_label_array.squeeze())
+            else:
+                # Create a tuple of axes to squeeze, excluding the last axis
+                shape = label_array.shape
+                axes_to_squeeze = tuple(i for i in range(len(shape) - 1) if shape[i] == 1)
+                self._label_arrays.append(np.squeeze(label_array, axis=axes_to_squeeze))

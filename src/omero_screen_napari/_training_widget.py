@@ -23,6 +23,7 @@ from omero_screen_napari.omero_data_singleton import omero_data
 logger = logging.getLogger("omero-screen-napari")
 logging.basicConfig(level=logging.DEBUG)
 
+#TODO: timepoint option needs to be integrated into the training widget
 
 def training_widget(
     class_name: str | None = None,
@@ -255,7 +256,8 @@ class TrainingWidget:
         plate = self.omero_data.plate_id
         well = self.omero_data.well_pos_list[0]
         image = self.omero_data.image_index[0]
-        file_name = f"{plate}_{well}_{image}.npy"
+        timepoint = self.user_data.timepoint
+        file_name = f"{plate}_{well}_{image}_{timepoint}.npy"
         classifier_dir = (
             Path.home() / "omeroscreen_trainingdata" / self.class_name
         )
@@ -352,12 +354,15 @@ class TrainingWidget:
             "reload": bool,
             "crop_size": int,
             "cellcycle": str,
+            "timepoint": int,
             "contour": bool,
             "channels": list,
         }
 
         for key, expected_type in required_keys.items():
-            if key not in self.user_data_dict:
+            if key == "timepoint" and key not in self.user_data_dict:
+                self.user_data_dict[key] = 0
+            elif key != "timepoint" and key not in self.user_data_dict:
                 print(f"Missing key: {key}")
                 return False
             if self.user_data_dict[key] is None:

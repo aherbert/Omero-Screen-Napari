@@ -10,6 +10,7 @@ The plugin can be run from napari as Welldata Widget under Plugins.
 import logging
 from typing import Optional
 
+import numpy as np
 from magicgui import magic_factory
 from napari.layers import Image
 from napari.viewer import Viewer
@@ -19,6 +20,7 @@ from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.welldata_api import parse_omero_data
 
 # Looging
+
 
 logger = logging.getLogger("omero-screen-napari")
 
@@ -126,7 +128,6 @@ def on_contrast_change(event):
         layer = event.source
         channel_number = int(omero_data.channel_data[layer.name])
         omero_data.intensities[channel_number] = tuple(layer.contrast_limits)
-       
 
 
 def handle_metadata_widget(viewer: Viewer, slider_position: int) -> None:
@@ -157,9 +158,10 @@ def set_color_maps(viewer: Viewer) -> None:
 
 def add_label_layers(viewer: Viewer) -> None:
     scale = omero_data.pixel_size
+    print(f"The labels shape loaed in line 159 is {omero_data.labels.shape}")
     if omero_data.labels.shape[-1] == 1:
         viewer.add_labels(
-            omero_data.labels.astype(int), name="Nuclei Masks", scale=scale
+            np.squeeze(omero_data.labels).astype(int), name="Nuclei Masks", scale=scale
         )
     elif omero_data.labels.shape[-1] == 2:
         channel_1_masks = omero_data.labels[..., 0].astype(int)

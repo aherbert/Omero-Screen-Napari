@@ -11,6 +11,7 @@ class UserData:
     reload: bool = field(default_factory=str)
     crop_size: int = field(default_factory=int)
     cellcycle: str = field(default_factory=str)
+    timepoint: int = field(default_factory=int)
     columns: int = field(default_factory=int)
     rows: int = field(default_factory=int)
     contour: bool = field(default_factory=bool)

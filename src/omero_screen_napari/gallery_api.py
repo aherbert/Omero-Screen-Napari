@@ -33,7 +33,7 @@ def show_gallery(omero_data: OmeroData, user_data: UserData, classifier=False):
         gallery_parser = ParseGallery(omero_data, user_data)
         gallery_parser.plot_gallery()
     except Exception as e:  # noqa: BLE001
-        logger.error(e)
+        logger.exception(e)
         # Show a message box with the error message
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
@@ -130,7 +130,10 @@ class CroppedImageParser:
         return image_array[..., order_indices]
 
     def _select_image_data(self, df: pl.DataFrame, image_id: int):
-        filtered_df = df.filter(df["image_id"] == image_id)
+        if "timepoint" in df.columns:
+            filtered_df = df.filter((df["image_id"] == image_id) & (df["timepoint"] == self._user_data.timepoint))
+        else:
+            filtered_df = df.filter(df["image_id"] == image_id)
         cellcycle_filtered_df = self._select_cellcycledata(filtered_df)
         if cellcycle_filtered_df.shape[0] == 0:
             logger.error(
@@ -173,11 +176,23 @@ class CroppedImageParser:
             raise ValueError(
                 "No images or labels to use for cropping galleries"
             )
-
-        current_data, current_labels = (
-            self._images[index, ...],
-            self._labels[index, ...],
+        logger.debug(
+            f"Shape of selected images for cropping  is {self._images.shape}"
         )
+        logger.debug(
+            f"Shape of selected labels for cropping  is {self._labels.shape}"
+        )
+        if len(self._images.shape)==5:
+            timepoint = self._user_data.timepoint
+            current_data, current_labels = (
+                self._images[index, timepoint, ...],
+                self._labels[index, timepoint, ...],
+            )
+        else:
+            current_data, current_labels = (
+                self._images[index, ...],
+                self._labels[index, ...],
+            )
         self._select_image_data(self._omero_data.well_ifdata, image_id)
 
         for row, col in zip(self._centroids_row, self._centroids_col):
@@ -254,13 +269,13 @@ def crop_region(
     Crop a region around the centroid of a segmented object.
     """
     # Calculate crop coordinates
-
     crop_row_start, crop_row_end = calculate_crop_coordinates(
-        centroid_row, current_data.shape[0], crop_size
+        centroid_row, current_data.shape[-3], crop_size
     )
     crop_col_start, crop_col_end = calculate_crop_coordinates(
-        centroid_col, current_data.shape[1], crop_size
+        centroid_col, current_data.shape[-2], crop_size
     )
+
 
     # Crop the region from the image
     cropped_region = current_data[
@@ -270,6 +285,7 @@ def crop_region(
     cropped_label = current_labels[
         crop_row_start:crop_row_end, crop_col_start:crop_col_end
     ]
+
     return cropped_region, cropped_label
 
 
@@ -524,7 +540,7 @@ class ParseGallery:
             channel for channel in self._user_data.channels if channel != ""
         ]
         ax.set_title(
-            f"well: {self._user_data.well}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle phase: {self._user_data.cellcycle}",
+            f"well: {self._user_data.well}\n{metadata_str}\nchannels: {', '.join(channel_list)}, cellcycle phase: {self._user_data.cellcycle}, timepoint: {self._user_data.timepoint}",
             fontsize=12,
             fontweight="bold",
         )
