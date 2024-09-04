@@ -44,7 +44,7 @@ def run_analysis_widget(wells: str, galleries: int):
 @magic_factory(
     call_button="Enter",
     segmentation={"choices": ["nucleus", "cell"]},
-    crop_size={"choices": [20, 30, 50, 100]},
+    crop_size={"choices": [20, 30, 50, 100, 200]},
     cellcycle={"choices": ["All", "G1", "S", "G2/M", "G2", "M", "Polyploid"]},
 )
 def gallery_widget(

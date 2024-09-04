@@ -46,6 +46,7 @@ class OmeroData:
 
     # User Input
     well_pos_list: list[str] = field(default_factory=list)
+    image_input: str = field(default_factory=str)
     image_index: list[int] = field(default_factory=list)
     # Screen data
     project_id: int = field(default_factory=get_project_id)

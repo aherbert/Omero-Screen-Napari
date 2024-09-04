@@ -45,7 +45,9 @@ class MetadataWidget(QWidget):
         super().__init__()
         self.layout = QVBoxLayout()
         self.label = QLabel()
-        label_text = "".join(f"{key}: {value}\n" for key, value in metadata.items())
+        label_text = "".join(
+            f"{key}: {value}\n" for key, value in metadata.items()
+        )
         self.label.setText(
             label_text.rstrip()
         )  # Remove the last newline character
@@ -53,10 +55,12 @@ class MetadataWidget(QWidget):
         self.layout.addWidget(self.label)
         self.setLayout(self.layout)
 
- # Mock event object with the current_step attribute
+
+# Mock event object with the current_step attribute
 class MockEvent:
     def __init__(self, source):
         self.source = source
+
 
 # Global variable to keep track of the existing metadata widget
 metadata_widget: Optional[MetadataWidget] = None
@@ -94,40 +98,41 @@ def welldata_widget(
     slider_position_change(mock_event)
 
 
-
 def clear_viewer_layers(viewer: Viewer) -> None:
     while len(viewer.layers) > 0:
         viewer.layers.pop(0)
+
 
 def add_image_to_viewer(viewer: Viewer) -> None:
     num_channels = omero_data.images.shape[-1]
     for i in range(num_channels):
         image_data = omero_data.images[..., i]
-        layer = viewer.add_image(
-            image_data, 
-            scale=omero_data.pixel_size) 
-        assert isinstance(layer, Image), "Expected layer to be an instance of Image"
+        layer = viewer.add_image(image_data, scale=omero_data.pixel_size)
+        assert isinstance(
+            layer, Image
+        ), "Expected layer to be an instance of Image"
         layer.contrast_limits_range = (0, 65535)
         specific_intensities = omero_data.intensities[i]
         layer.contrast_limits = specific_intensities
-        layer.blending = 'additive'
+        layer.blending = "additive"
         layer.events.contrast_limits.connect(on_contrast_change)
 
     # Configure the scale bar
     viewer.scale_bar.visible = True
     viewer.scale_bar.unit = "µm"
 
-def on_contrast_change(event):
-        """
-        Event handler for changes in contrast limits.
 
-        Parameters:
-        - event: The event object containing information about the change.
-        """
-        # Access the layer through the event's source attribute
-        layer = event.source
-        channel_number = int(omero_data.channel_data[layer.name])
-        omero_data.intensities[channel_number] = tuple(layer.contrast_limits)
+def on_contrast_change(event):
+    """
+    Event handler for changes in contrast limits.
+
+    Parameters:
+    - event: The event object containing information about the change.
+    """
+    # Access the layer through the event's source attribute
+    layer = event.source
+    channel_number = int(omero_data.channel_data[layer.name])
+    omero_data.intensities[channel_number] = tuple(layer.contrast_limits)
 
 
 def handle_metadata_widget(viewer: Viewer, slider_position: int) -> None:
@@ -161,7 +166,9 @@ def add_label_layers(viewer: Viewer) -> None:
     print(f"The labels shape loaed in line 159 is {omero_data.labels.shape}")
     if omero_data.labels.shape[-1] == 1:
         viewer.add_labels(
-            np.squeeze(omero_data.labels).astype(int), name="Nuclei Masks", scale=scale
+            np.squeeze(omero_data.labels).astype(int),
+            name="Nuclei Masks",
+            scale=scale,
         )
     elif omero_data.labels.shape[-1] == 2:
         channel_1_masks = omero_data.labels[..., 0].astype(int)
@@ -189,7 +196,6 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
         single_key = list(channel_names.keys())[0]
         color_map_dict[single_key] = "gray"
         return color_map_dict
-    
 
     color_map_dict = {"DAPI": "blue"}
 
@@ -197,7 +203,7 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
     special_channels = {"Tub": "green", "EdU": "gray"}
 
     # Determine remaining color options based on presence of Tub and EdU
-    remaining_colors = ['red']
+    remaining_colors = ["red"]
     if "Tub" not in channel_names:
         remaining_colors.append("green")
     if "EdU" not in channel_names:
@@ -209,7 +215,9 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
             color_map_dict[channel] = special_channels[channel]
 
     # Assign remaining colors to any other channels
-    remaining_channels = [channel for channel in channel_names if channel not in color_map_dict]
+    remaining_channels = [
+        channel for channel in channel_names if channel not in color_map_dict
+    ]
     for channel, color in zip(remaining_channels, remaining_colors):
         color_map_dict[channel] = color
 

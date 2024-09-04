@@ -277,6 +277,7 @@ class UserInput:
         Raises:
             ValueError: If the image index input format is invalid.
         """
+        self._omero_data.image_input = self._images # store this for use in saving training data
         index = self._images
 
         if not (
@@ -402,9 +403,8 @@ class CsvFileParser:
         if self._file_name and self._original_file:
             saved_name = f"{self._plate_id}_{self._file_name.split('_')[-1]}"
             self._csv_file_path = self._data_path / saved_name
-            file_content = self._original_file.getFileInChunks()
             with open(self._csv_file_path, "wb") as file_on_disk:
-                for chunk in file_content:
+                for chunk in self._original_file.asFileObj():
                     file_on_disk.write(chunk)
         else:
             logger.error("Problem with parsing csv file.")

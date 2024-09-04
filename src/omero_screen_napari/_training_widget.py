@@ -201,8 +201,10 @@ class TrainingWidget:
             self.class_name = classifier_name
             file_name, file_path, metadata_path = self._set_paths()
             if file_path.exists():
+                logger.debug(f"Classifier data for {file_path} exists, loading existing data.")
                 self._parse_classified_data(file_path, metadata_path)
             else:
+                logger.debug(f"Classifier data for {file_path} does not exists, parsing new data.")
                 self._parse_metadata(metadata_path)
                 if self._check_metadata():
                     self._parse_data()
@@ -255,8 +257,9 @@ class TrainingWidget:
     def _set_paths(self):
         plate = self.omero_data.plate_id
         well = self.omero_data.well_pos_list[0]
-        image = self.omero_data.image_index[0]
+        image = self.omero_data.image_input
         timepoint = self.user_data.timepoint
+
         file_name = f"{plate}_{well}_{image}_{timepoint}.npy"
         classifier_dir = (
             Path.home() / "omeroscreen_trainingdata" / self.class_name
@@ -527,8 +530,9 @@ class TrainingDataSaver:
     def _set_paths(self):
         plate = self.omero_data.plate_id
         well = self.omero_data.well_pos_list[0]
-        image = self.omero_data.image_index[0]
-        file_name = f"{plate}_{well}_{image}.npy"
+        image = self.omero_data.image_input
+        time_point = self.user_data.timepoint
+        file_name = f"{plate}_{well}_{image}_{time_point}.npy"
         file_path = self.classifier_dir / file_name
         meta_data_path = self.classifier_dir / "metadata.json"
         return file_name, file_path, meta_data_path

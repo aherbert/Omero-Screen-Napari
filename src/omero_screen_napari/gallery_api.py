@@ -130,11 +130,14 @@ class CroppedImageParser:
         return image_array[..., order_indices]
 
     def _select_image_data(self, df: pl.DataFrame, image_id: int):
+        logger.debug(f"Selecting data for image id: {image_id}")
         if "timepoint" in df.columns:
             filtered_df = df.filter((df["image_id"] == image_id) & (df["timepoint"] == self._user_data.timepoint))
         else:
             filtered_df = df.filter(df["image_id"] == image_id)
+        logger.debug(f"The length of the filtered df is {len(filtered_df)}")
         cellcycle_filtered_df = self._select_cellcycledata(filtered_df)
+        logger.debug(f"The length of the cellcycle filtered df is {len(cellcycle_filtered_df)}")
         if cellcycle_filtered_df.shape[0] == 0:
             logger.error(
                 f"The selected image id: {image_id} does not have data in the well_ifdata dataframe"
