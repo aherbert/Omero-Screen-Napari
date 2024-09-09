@@ -710,7 +710,7 @@ def _save_gallery(
     cropped_image_parser = CroppedImageParser(omero_data, userdata)
     cropped_image_parser.parse_crops()
     for i in range(galleries):
-        random_image_parser = RandomImageParser(omero_data, userdata)
+        random_image_parser = RandomImageParser(omero_data, userdata, classifier=False)
         random_image_parser.parse_random_images()
         gallery_parser = ParseGallery(omero_data, userdata, show_gallery=False)
         fig = gallery_parser.plot_gallery()
