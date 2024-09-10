@@ -74,6 +74,7 @@ class OmeroData:
 
     # Image data
     images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
+    stitched_images: np.ndarray = field(default_factory=lambda: np.empty((0,)))
     image_ids: list = field(default_factory=list)
     labels: np.ndarray = field(default_factory=lambda: np.empty((0,)))
 

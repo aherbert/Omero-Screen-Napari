@@ -12,12 +12,13 @@ from typing import Optional
 
 import numpy as np
 from magicgui import magic_factory
+from magicgui.widgets import Container
 from napari.layers import Image
 from napari.viewer import Viewer
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from omero_screen_napari.omero_data_singleton import omero_data
-from omero_screen_napari.welldata_api import parse_omero_data
+from omero_screen_napari.welldata_api import parse_omero_data, stitch_images
 
 # Looging
 
@@ -64,6 +65,22 @@ class MockEvent:
 
 # Global variable to keep track of the existing metadata widget
 metadata_widget: Optional[MetadataWidget] = None
+
+# Combine Welldata and Stiched data widgets
+
+def well_widget_combined():
+    """
+    This function combines the well and stitched data widgets into a single widget.
+    """
+    # Call the magic factories to get the widget instances
+    welldata_widget_instance = welldata_widget()
+    stitched_data_widget_instance = stitched_data_widget()
+    return Container(
+        widgets=[
+            welldata_widget_instance,
+            stitched_data_widget_instance,
+        ]
+    )
 
 
 # Widget to call Omero and load well images
@@ -222,3 +239,20 @@ def _generate_color_map(channel_names: dict) -> dict[str, str]:
         color_map_dict[channel] = color
 
     return color_map_dict
+
+@magic_factory(call_button="Enter")
+def stitched_data_widget(viewer: Viewer) -> None:
+    clear_viewer_layers(viewer)
+    stitched_images = stitch_images(omero_data)
+    viewer.add_image(
+    stitched_images,
+    contrast_limits=list(omero_data.intensities[0]),
+    gamma=1,
+    channel_axis=-1,
+    scale=omero_data.pixel_size,
+    name='Stitched Image'
+    )
+    viewer.scale_bar.visible = True
+    viewer.scale_bar.unit = "µm"
+    viewer.scale_bar.color = "white"
+
