@@ -1258,17 +1258,24 @@ def stitch_images2(omero_data, rotation=0.0, overlap_x=0, overlap_y=0, edge=0, m
     logger.debug("Stitching images %s", omero_data.images.shape)
     # NYXC
     assert len(omero_data.images.shape) == 4, "The input array should be 4D: N-images of YXC"
-    assert omero_data.images.shape[0] == 21, "The input number of images should be size 21"
+    n = omero_data.images.shape[0]
+    if n == 21:
+      indices_pattern = [
+          [-1, 1, 2, 3, -1],  # Preserved -1 for empty
+          [8, 7, 6, 5, 4],  # Adjusted for zero-based indexing
+          [9, 10, 0, 11, 12],  # The first image is now 0 (zero-based)
+          [17, 16, 15, 14, 13],  # Adjusted for zero-based indexing
+          [-1, 18, 19, 20, -1],  # Preserved -1 for empty
+      ]
+    elif n == 4:
+      indices_pattern = [
+          [1, 2],
+          [3, 0],
+      ]
+    else:
+        raise ValueError(f"Unsupported number of image tiles: {n}")
 
     # YX order
-    indices_pattern = [
-        [-1, 1, 2, 3, -1],  # Preserved -1 for empty
-        [8, 7, 6, 5, 4],  # Adjusted for zero-based indexing
-        [9, 10, 0, 11, 12],  # The first image is now 0 (zero-based)
-        [17, 16, 15, 14, 13],  # Adjusted for zero-based indexing
-        [-1, 18, 19, 20, -1],  # Preserved -1 for empty
-    ]
-
     tiles = {}
     for y, row in enumerate(indices_pattern):
       for x, idx in enumerate(row):
@@ -1367,16 +1374,22 @@ def stitch_labels(omero_data, rotation=0.0, overlap_x=0, overlap_y=0) -> np.ndar
     logger.debug("Stitching labels %s", omero_data.labels.shape)
     # NYXC
     assert len(omero_data.labels.shape) == 4, "The input array should be 4D: N-images of YXC"
-    assert omero_data.labels.shape[0] == 21, "The input number of images should be size 21"
-
-    # YX order
-    indices_pattern = [
-        [-1, 1, 2, 3, -1],  # Preserved -1 for empty
-        [8, 7, 6, 5, 4],  # Adjusted for zero-based indexing
-        [9, 10, 0, 11, 12],  # The first image is now 0 (zero-based)
-        [17, 16, 15, 14, 13],  # Adjusted for zero-based indexing
-        [-1, 18, 19, 20, -1],  # Preserved -1 for empty
-    ]
+    n = omero_data.labels.shape[0]
+    if n == 21:
+      indices_pattern = [
+          [-1, 1, 2, 3, -1],  # Preserved -1 for empty
+          [8, 7, 6, 5, 4],  # Adjusted for zero-based indexing
+          [9, 10, 0, 11, 12],  # The first image is now 0 (zero-based)
+          [17, 16, 15, 14, 13],  # Adjusted for zero-based indexing
+          [-1, 18, 19, 20, -1],  # Preserved -1 for empty
+      ]
+    elif n == 4:
+      indices_pattern = [
+          [1, 2],
+          [3, 0],
+      ]
+    else:
+        raise ValueError(f"Unsupported number of image tiles: {n}")
 
     tiles = {}
     for y, row in enumerate(indices_pattern):
