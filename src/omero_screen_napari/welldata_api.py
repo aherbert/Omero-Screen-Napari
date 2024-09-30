@@ -48,6 +48,7 @@ def parse_omero_data(
     plate_id: str,
     well_pos: str,
     image_input: str,
+    time: str = "All",
     conn: Optional[BlitzGateway] = None,
 ) -> None:
     """
@@ -60,19 +61,20 @@ def parse_omero_data(
         well_list (str): List of wells provided by welldata_widget (e.g 'A1, A2')
         image_input (str): String Describing the combinations of images to be supplied for each well
         The images options are 'All'; 0-3; 1, 3, 4.
-        conn (BlitzGateway): BlitzGateway connection
+        conn (BlitzGateway): BlitzGateway connection.
+        time (str): String describing the time frames. Options are 'All'; 0-3 (range); 0 (single).
     """
     plate_number = int(plate_id)
     if conn is not None:
         try:
             parse_plate_data(
-                omero_data, plate_number, well_pos, image_input, conn
+                omero_data, plate_number, well_pos, image_input, conn, time=time
             )
             # clear well and image data to avoid appending to existing data
             omero_data.reset_well_and_image_data()
             for well_pos in omero_data.well_pos_list:
                 logger.info(f"Processing well {well_pos}")  # noqa: G004
-                well_image_parser(omero_data, well_pos, conn)
+                well_image_parser(omero_data, well_pos, conn, time=time)
         except Exception as e:  # noqa: BLE001
             logger.error(
                 f"Error parsing plate data: {e}\n{''.join(traceback.format_exception(None, e, e.__traceback__))}"
@@ -92,6 +94,7 @@ def parse_plate_data(
     well_pos: str,
     image_input: str,
     conn: BlitzGateway,
+    time: str = "All",
 ) -> None:
     """
     Function that combines the different parser classes that are responsible to process userinput
@@ -103,14 +106,15 @@ def parse_plate_data(
         well_pos (str): List of wells provided by welldata_widget (e.g 'A1, A2')
         image_input (str):  String Describing the combinations of images to be supplied for each well
                             The images options are 'All'; 0-3; 1, 3, 4.
-        conn (BlitzGateway): BlitzGateway connection
+        conn (BlitzGateway): BlitzGateway connection.
+        time (str): String describing the time frames. Options are 'All'; 0-3 (range); 0 (single).
     """
     # check if plate-ID already supplied, if it is then skip PlateHandler
     if plate_id != omero_data.plate_id:
         reset_omero_data()
         omero_data.plate_id = plate_id
         user_input = UserInput(
-            omero_data, plate_id, well_pos, image_input, conn
+            omero_data, plate_id, well_pos, image_input, conn, time=time
         )
         user_input.parse_data()
         logger.info(f"Loaded data for plate with ID {plate_id}")
@@ -130,13 +134,13 @@ def parse_plate_data(
             f"Plate data for plate {plate_id} already exists. Skip relaod."
         )
         user_input = UserInput(
-            omero_data, plate_id, well_pos, image_input, conn
+            omero_data, plate_id, well_pos, image_input, conn, time=time
         )
         user_input.parse_data()
 
 
 def well_image_parser(
-    omero_data: OmeroData, well_pos: str, conn: BlitzGateway
+    omero_data: OmeroData, well_pos: str, conn: BlitzGateway, time: str = 'All'
 ):
     """
     Function that combines the different parser classes that are responsible to process well, image and label data.
@@ -145,11 +149,13 @@ def well_image_parser(
     Args:
         omero_data (OmeroData): OmeroData class object that receives the parsed data
         well_pos (str): List of wells provided by welldata_widget (e.g 'A1, A2')
-        conn (BlitzGateway): BlitzGateway connection
+        conn (BlitzGateway): BlitzGateway connection.
+        time (str): String describing the time frames. Options are 'All'; 0-3 (range); 0 (single).
     """
     well_data_parser = WellDataParser(omero_data, well_pos)
     well_data_parser.parse_well()
     if well := well_data_parser._well:
+        # TODO: pass time here
         image_parser = ImageParser(omero_data, well, conn)
         image_parser.parse_images_and_labels()
 
@@ -176,6 +182,7 @@ class UserInput:
         well_pos: str,
         image_input: str,
         conn,
+        time: str = "All"
     ):
         self._omero_data: OmeroData = omero_data
         self._plate_id: int = plate_id
@@ -185,6 +192,9 @@ class UserInput:
         self._plate: Optional[PlateWrapper] = None  # added by _check_plate_id
         self._image_number: int = 0  # added by _parse_image_number
         self._well_pos_list: list[str] = []  # added by _well_data_parser
+        self._time: str = time
+        self._start: np.array = None
+        self._length: np.array = None
 
     def parse_data(self):
         self._check_plate_id()
@@ -194,6 +204,7 @@ class UserInput:
         self._omero_data.well_pos_list = self._well_pos_list
         self._image_index_parser()
         self._omero_data.image_index = self._image_index
+        self._image_time_parser()
 
     def _check_plate_id(self) -> None:
         """
@@ -308,6 +319,63 @@ class UserInput:
         else:
             # Handle single number, e.g., '1'
             self._image_index = [int(index)]
+
+    def _image_time_parser(self):
+        """
+        Parses the image time string and checks if the image crop inputs are valid.
+        Raises:
+            ValueError: If the image time input format is invalid.
+        """
+        time = self._time
+
+        if not (
+            time.lower() == "all"
+            or re.match(r"^\d+(-\d+)?$", time)
+        ):
+            logger.error(
+                f"Image time '{time}' doesn't match any of the expected patterns 'All, 1-3, 1'."
+            )
+            raise ValueError(
+                f"Image time '{time}' doesn't match any of the expected patterns 'All, 1-3, 1'."
+            )
+
+        if time.lower() == "all":
+            # Ignore and default to all time points
+            return
+
+        if "-" in time:
+            # Handle range, e.g., '1-3'
+            start, end = map(int, time.split("-"))
+        else:
+            # Handle single number, e.g., '1'
+            start = int(time)
+            end = start
+
+        if end < start:
+            logger.error(f"Invalid time range: {start}-{end}.")
+            raise ValueError(f"Invalid time range: {start}-{end}.")
+
+        # Get image dimensions
+        if self._plate:
+            first_well = list(self._plate.listChildren())[0]
+            image = first_well.getImage(0)
+            xyzct = [image.getSizeX(), image.getSizeY(), image.getSizeZ(), image.getSizeC(), image.getSizeT()]
+        else:
+            logger.error("No plate found, unable to parse image time.")
+            raise ValueError("No plate found, unable to parse image time.")
+        # Validate. Change start to zero-based indexing.
+        if end > xyzct[0]:
+            logger.error(f"Invalid end time: {end} > {xyzct[0]}.")
+            raise ValueError(f"Invalid end time: {end} > {xyzct[0]}.")
+        if start < 1:
+            logger.error(f"Invalid start time: {start} < 1.")
+            raise ValueError(f"Invalid start time: {start} < 1.")
+
+        start -= 1
+        length = end - start
+        # XYZCT format
+        self._omero_data.crop_start = (0, 0, 0, 0, start)
+        self._omero_data.crop_length = (xyzct[0], xyzct[1], xyzct[2], xyzct[3], length)
 
 
 # -----------------------------------------------PLATE DATA -----------------------------------------------------
@@ -1005,15 +1073,22 @@ class ImageParser:
         """
 
         logger.info(f"Collecting images for well {self._well.getWellPos()}")
+        start, length = _get_crop(self._omero_data)
+        if start:
+            logger.info(f"Using crop: {start} - {length}")
+
         for index in tqdm(self._image_index):
             if image := self._well.getImage(index):
+                # Support time point...
+                logger.info(f"Image {image.getId()}:tzyxc={image.getSizeT()},{image.getSizeZ()},{image.getSizeY()},{image.getSizeX()},{image.getSizeC()}")
+
                 if mip_id := self.check_mip(image):
                     logger.info(
                         f"Image with index {index} has Z-stacks, looking for MIP with id {mip_id}."
                     )
-                    _, image_array = get_image(self._conn, int(mip_id))
+                    _, image_array = get_image(self._conn, int(mip_id), start_coords=start, axis_lengths=length)
                 else:
-                    _, image_array = get_image(self._conn, image.getId())
+                    _, image_array = get_image(self._conn, image.getId(), start_coords=start, axis_lengths=length)
                 flatfield_corrected_image = self._flatfield_correct_image(
                     image_array
                 )
@@ -1081,6 +1156,7 @@ class ImageParser:
 
     def _collect_labels(self):
         label_names = [f"{name}_segmentation" for name in self._image_ids]
+        start, length = _get_crop(self._omero_data)
 
         relevant_label_data = [
             label_data
@@ -1092,7 +1168,7 @@ class ImageParser:
         ]
 
         for label_data in relevant_label_data:
-            _, label_array = get_image(self._conn, label_data.getId())
+            _, label_array = get_image(self._conn, label_data.getId(), start_coords=start, axis_lengths=length)
             if label_array.shape[-1] == 2:
                 corrected_label_array = correct_channel_order(label_array)
                 self._label_arrays.append(corrected_label_array.squeeze())
@@ -1548,3 +1624,8 @@ def _merge_nonoverlapping_labels(
     im1[yp : yp + s[0], xp : xp + s[1]] += im2
 
     return im1
+
+def _get_crop(omero_data: OmeroData):
+    if omero_data.crop_start:
+        return omero_data.crop_start, omero_data.crop_length
+    return None, None

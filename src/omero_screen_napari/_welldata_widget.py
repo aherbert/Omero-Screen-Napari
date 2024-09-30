@@ -92,6 +92,7 @@ def welldata_widget(
     plate_id: str = "Plate ID",
     well_pos_list: str = "Well Position",
     images: str = "All",
+    time: str = "All",
 ) -> None:
     """
     This function is a widget for handling well data in a napari viewer.
@@ -99,7 +100,7 @@ def welldata_widget(
     and then adds the images and labels to the viewer. It also handles metadata,
     sets color maps, and adds label layers to the viewer.
     """
-    parse_omero_data(omero_data, plate_id, well_pos_list, images)
+    parse_omero_data(omero_data, plate_id, well_pos_list, images, time=time)
     clear_viewer_layers(viewer)
     add_image_to_viewer(viewer)
     set_color_maps(viewer)
