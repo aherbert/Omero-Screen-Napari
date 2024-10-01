@@ -74,7 +74,7 @@ def parse_omero_data(
             omero_data.reset_well_and_image_data()
             for well_pos in omero_data.well_pos_list:
                 logger.info(f"Processing well {well_pos}")  # noqa: G004
-                well_image_parser(omero_data, well_pos, conn, time=time)
+                well_image_parser(omero_data, well_pos, conn)
         except Exception as e:  # noqa: BLE001
             logger.error(
                 f"Error parsing plate data: {e}\n{''.join(traceback.format_exception(None, e, e.__traceback__))}"
@@ -140,7 +140,7 @@ def parse_plate_data(
 
 
 def well_image_parser(
-    omero_data: OmeroData, well_pos: str, conn: BlitzGateway, time: str = 'All'
+    omero_data: OmeroData, well_pos: str, conn: BlitzGateway
 ):
     """
     Function that combines the different parser classes that are responsible to process well, image and label data.
@@ -155,7 +155,6 @@ def well_image_parser(
     well_data_parser = WellDataParser(omero_data, well_pos)
     well_data_parser.parse_well()
     if well := well_data_parser._well:
-        # TODO: pass time here
         image_parser = ImageParser(omero_data, well, conn)
         image_parser.parse_images_and_labels()
 
