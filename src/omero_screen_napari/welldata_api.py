@@ -341,6 +341,8 @@ class UserInput:
 
         if time.lower() == "all":
             # Ignore and default to all time points
+            self._omero_data.crop_start = tuple()
+            self._omero_data.crop_length = tuple()
             return
 
         if "-" in time:
@@ -1256,8 +1258,9 @@ def stitch_images2(omero_data, rotation=0.0, overlap_x=0, overlap_y=0, edge=0, m
     returns: [np.ndarray] stitched image
     """
     logger.debug("Stitching images %s", omero_data.images.shape)
-    # NYXC
-    assert len(omero_data.images.shape) == 4, "The input array should be 4D: N-images of YXC"
+    # N[T]YXC
+    size = len(omero_data.images.shape)
+    assert size == 4 or size == 5, "The input array should be N-images of [T]YXC"
     n = omero_data.images.shape[0]
     if n == 21:
       indices_pattern = [
@@ -1285,8 +1288,20 @@ def stitch_images2(omero_data, rotation=0.0, overlap_x=0, overlap_y=0, edge=0, m
             tiles[x] = d = dict()
           d[y] = omero_data.images[idx]
 
-    stitched_image = compose_tiles(tiles, rotation=rotation, ox=-overlap_x, oy=-overlap_y,
-      edge=edge, mode=mode)
+    if size == 5:
+      l = []
+      for t in range(len(omero_data.images[0])):
+        tiles1 = dict()
+        for x, xd in tiles.items():
+          tiles1[x] = d = dict()
+          for y, im in xd.items():
+            d[y] = im[t]
+        l.append(compose_tiles(tiles1, rotation=rotation, ox=-overlap_x, oy=-overlap_y,
+          edge=edge, mode=mode))
+      stitched_image = np.stack(l)
+    else:
+      stitched_image = compose_tiles(tiles, rotation=rotation, ox=-overlap_x, oy=-overlap_y,
+        edge=edge, mode=mode)
 
     logger.debug("Stitched image shape: %s", stitched_image.shape)
     return stitched_image
@@ -1372,8 +1387,9 @@ def stitch_labels(omero_data, rotation=0.0, overlap_x=0, overlap_y=0) -> np.ndar
     returns: [np.ndarray] stitched labels
     """
     logger.debug("Stitching labels %s", omero_data.labels.shape)
-    # NYXC
-    assert len(omero_data.labels.shape) == 4, "The input array should be 4D: N-images of YXC"
+    # N[T]YXC
+    size = len(omero_data.labels.shape)
+    assert size == 4 or size == 5, "The input array should be N-images of [T]YXC"
     n = omero_data.labels.shape[0]
     if n == 21:
       indices_pattern = [
@@ -1401,7 +1417,18 @@ def stitch_labels(omero_data, rotation=0.0, overlap_x=0, overlap_y=0) -> np.ndar
           d[y] = omero_data.labels[idx]
           np.save(f'lx{x}y{y}.npy', d[y])
 
-    stitched_image = compose_labels(tiles, rotation=rotation, ox=-overlap_x, oy=-overlap_y)
+    if size == 5:
+      l = []
+      for t in range(len(omero_data.labels[0])):
+        tiles1 = dict()
+        for x, xd in tiles.items():
+          tiles1[x] = d = dict()
+          for y, im in xd.items():
+            d[y] = im[t]
+        l.append(compose_tiles(tiles1, rotation=rotation, ox=-overlap_x, oy=-overlap_y))
+      stitched_image = np.stack(l)
+    else:
+      stitched_image = compose_labels(tiles, rotation=rotation, ox=-overlap_x, oy=-overlap_y)
 
     logger.debug("Stitched labels shape: %s", stitched_image.shape)
     return stitched_image
