@@ -60,15 +60,15 @@ def parse_args():
     help='Time position (e.g. All; 1-3; 2)')
 
   group = parser.add_argument_group('Composition Options')
-  group.add_argument('--rotation', type=float, default=0,
+  group.add_argument('--rotation', type=float, default=0.15,
     help='Rotation angle in degrees counter clockwise (default: %(default)s)')
-  group.add_argument('--ox', type=int, default=0,
+  group.add_argument('--ox', type=int, default=7,
     help='Pixel overlap in x (default: %(default)s)')
-  group.add_argument('--oy', type=int, default=0,
+  group.add_argument('--oy', type=int, default=7,
     help='Pixel overlap in y (default: %(default)s)')
 
   group = parser.add_argument_group('Image Options')
-  group.add_argument('--edge', type=int, default=0,
+  group.add_argument('--edge', type=int, default=7,
     help='Pixel edge for blending overlap (default: %(default)s)')
   group.add_argument('--mode', default='reflect',
     help='Mode to fill points outside the image during rotation (default: %(default)s)')
