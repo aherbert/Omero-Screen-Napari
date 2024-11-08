@@ -1198,70 +1198,10 @@ class ImageParser:
 #     ):
 #         self._omero_data: OmeroData = omero_data
 
-
-
-
-def stitch_images(omero_data) -> np.ndarray:
+def stitch_images(omero_data, rotation=0.0, overlap_x=0, overlap_y=0, edge=0, mode='reflect') -> np.ndarray:
     """Stitch the images in the array according to the specified pattern
-    When a full well is imaged at 10 x21 single channel 10x images from an Operetta microscope
-    are provided)
-    returns: [np.ndarray] stitched image of shape (5*1080, 5*1080, 1)
-    """
-    logger.debug("Stitching images %s", omero_data.images.shape)
-    assert omero_data.images.shape == (
-        21,
-        1080,
-        1080,
-        1,
-    ), "The input array should be 21x1080x1080x1"
-
-
-    # Creating an empty array to add as spacer
-    empty_array = np.full((1080, 1080, 1), fill_value=omero_data.intensities[0][0])
-
-    indices_pattern = [
-        [
-            -1,
-            1,
-            2,
-            3,
-            -1,
-        ],  # Adjusted for zero-based indexing but preserved -1 for empty
-        [8, 7, 6, 5, 4],  # Adjusted for zero-based indexing
-        [9, 10, 0, 11, 12],  # The first image is now 0 (zero-based)
-        [17, 16, 15, 14, 13],  # Adjusted for zero-based indexing
-        [-1, 18, 19, 20, -1],  # Preserved -1 for empty
-    ]
-
-    # No need to adjust indices by subtracting 1 since we've directly used zero-based indices above
-
-    # Create the stitched image
-    stitched_shape = (5 * 1080, 5 * 1080, 1)  # 25x25 of 1080x1080 images
-    stitched_image = np.zeros(stitched_shape)
-
-    # Fill in the stitched image
-    for i, row in enumerate(indices_pattern):
-        for j, idx in enumerate(row):
-            # Calculate the position where the current image should be placed
-            x_pos = i * 1080
-            y_pos = j * 1080
-
-            # Place either the empty array or the corresponding image
-            if idx == -1:
-                stitched_image[
-                    x_pos : x_pos + 1080, y_pos : y_pos + 1080, :
-                ] = empty_array
-            else:
-                stitched_image[
-                    x_pos : x_pos + 1080, y_pos : y_pos + 1080, :
-                ] = omero_data.images[idx]
-    logger.debug("Stitched image shape: %s", stitched_image.shape)
-    return stitched_image
-
-def stitch_images2(omero_data, rotation=0.0, overlap_x=0, overlap_y=0, edge=0, mode='reflect') -> np.ndarray:
-    """Stitch the images in the array according to the specified pattern
-    when a full well is imaged at 10x on an Operetta microscope. This is a 5x5 grid
-    with corners excluded which creates 21 images.
+    when a full well is imaged at 10x on an Operetta microscope. Supports:
+    5x5 grid with corners excluded which creates 21 images; 2x2 grid of 4 images.
     returns: [np.ndarray] stitched image
     """
     logger.debug("Stitching images %s", omero_data.images.shape)
@@ -1388,8 +1328,8 @@ def compose_tiles(
 
 def stitch_labels(omero_data, rotation=0.0, overlap_x=0, overlap_y=0) -> np.ndarray:
     """Stitch the labels in the array according to the specified pattern
-    when a full well is imaged at 10x on an Operetta microscope. This is a 5x5 grid
-    with corners excluded which creates 21 images.
+    when a full well is imaged at 10x on an Operetta microscope. Supports:
+    5x5 grid with corners excluded which creates 21 images; 2x2 grid of 4 images.
     Note: labels will be renumberd to unique objects.
     returns: [np.ndarray] stitched labels
     """

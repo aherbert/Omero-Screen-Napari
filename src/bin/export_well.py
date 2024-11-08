@@ -35,7 +35,7 @@ from omero_screen_napari.omero_data_singleton import omero_data
 from omero_screen_napari.utils import omero_connect
 from omero_screen_napari.welldata_api import (
   UserInput, FlatfieldMaskParser, WellDataParser, ImageParser,
-  parse_plate_data, stitch_images2, stitch_labels)
+  parse_plate_data, stitch_images, stitch_labels)
 
 # Check if the path is a valid directory, or raise an error
 def dir_path(path):
@@ -111,7 +111,7 @@ def export_plate(args, conn = None):
         image_parser = ImageParser(omero_data, well, conn)
         image_parser.parse_images_and_labels()
         # Compose and save. Compose returns YXC format so we create a view of CYX.
-        stitched_images = stitch_images2(omero_data, rotation=args.rotation,
+        stitched_images = stitch_images(omero_data, rotation=args.rotation,
           overlap_x=args.ox, overlap_y=args.oy, edge=args.edge, mode=args.mode)
         tifffile.imwrite(os.path.join(basedir, f'i{t}.tif'), 
           np.moveaxis(stitched_images, -1, 0))

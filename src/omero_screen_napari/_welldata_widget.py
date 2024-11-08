@@ -18,7 +18,7 @@ from napari.viewer import Viewer
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from omero_screen_napari.omero_data_singleton import omero_data
-from omero_screen_napari.welldata_api import parse_omero_data, stitch_images, stitch_images2, stitch_labels
+from omero_screen_napari.welldata_api import parse_omero_data, stitch_images, stitch_labels
 
 # Looging
 
@@ -255,8 +255,7 @@ def stitched_data_widget(
     mode: str = 'reflect'
 ) -> None:
     clear_viewer_layers(viewer)
-    #stitched_images = stitch_images(omero_data)
-    stitched_images = stitch_images2(omero_data, rotation=rotation,
+    stitched_images = stitch_images(omero_data, rotation=rotation,
       overlap_x=overlap_x, overlap_y=overlap_y, edge=edge, mode=mode)
     viewer.add_image(
       stitched_images,
