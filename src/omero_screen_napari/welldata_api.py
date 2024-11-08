@@ -536,7 +536,7 @@ class ChannelDataParser:
             ann_value = map_ann.getValue()
             # Assuming the value is a list of tuples or similar structure
             for key, _value in ann_value:
-                if key.lower() in ["dapi", "hoechst"]:
+                if key.lower() in ["dapi", "hoechst", "dna"]:
                     self._map_annotations = ann_value
                     return  # Return the first matching map annotation's value
 
@@ -562,6 +562,8 @@ class ChannelDataParser:
         }
         if "Hoechst" in self._channel_data:
             self._channel_data["DAPI"] = self._channel_data.pop("Hoechst")
+        elif "DNA" in self._channel_data:
+            self._channel_data["DAPI"] = self._channel_data.pop("DNA")
         # check if one of the channels is DAPI otherwise raise exception
 
 
@@ -956,21 +958,19 @@ class WellDataParser:
             raise ValueError(f"Well at pos {self._well_pos} not found")
         for ann in self._well.listAnnotations():
             if ann and ann.getValue():
-                map_ann = dict(ann.getValue())
-                if "cell_line" in map_ann:
-                    self._metadata = map_ann
-                    break
-                else:
-                    logger.error(
-                        f"No metadata with cell line name found for well {self._well_pos}"
-                    )
-                    raise ValueError(
-                        f"No metadata with cell line name found for well {self._well_pos}"
-                    )
+                ann_value = ann.getValue()
+                # Assuming the value is a list of tuples or similar structure
+                for key, _value in ann_value:
+                    if key.lower() == "cell_line":
+                        self._metadata = dict(ann.getValue())
+                        self._metadata["cell_line"] = self._metadata[key]
+                        break
         if not self._metadata:
-            logger.error(f"No map annotations found for well {self._well_pos}")
+            logger.error(
+                f"No metadata with cell line name found for well {self._well_pos}"
+            )
             raise ValueError(
-                f"No map annotations found for well {self._well_pos}"
+                f"No metadata with cell line name found for well {self._well_pos}"
             )
 
     def _load_well_csvdata(self):
@@ -1169,7 +1169,15 @@ class ImageParser:
         ]
 
         for label_data in relevant_label_data:
-            _, label_array = get_image(self._conn, label_data.getId(), start_coords=start, axis_lengths=length)
+            # Note: The crop is based on the image dimensions.
+            # The labels may not have the same number of channels.
+            axis_lengths = length
+            if length and length[3] > 1:
+                image = self._conn.getObject('Image', label_data.getId())
+                if image and image.getSizeC() != length[3]:
+                    axis_lengths = length[:3] + (image.getSizeC(),) + length[4:]
+
+            _, label_array = get_image(self._conn, label_data.getId(), start_coords=start, axis_lengths=axis_lengths)
             if label_array.shape[-1] == 2:
                 corrected_label_array = correct_channel_order(label_array)
                 self._label_arrays.append(corrected_label_array.squeeze())
